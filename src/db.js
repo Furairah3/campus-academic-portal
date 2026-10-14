@@ -78,5 +78,7 @@ export async function seedDemoData() {
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S1', 'Quiz', 91]);
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S2', 'Security lab', 78]);
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S2', 'Quiz', 84]);
+    await tx.run("INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) SELECT 'IS451',id,'Information Security Quiz',88 FROM users WHERE id LIKE 'D-%'");
+    await tx.run("INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) SELECT 'IS451',id,'Access Control Lab',92 FROM users WHERE id LIKE 'D-%'");
   });
 }

@@ -132,6 +132,8 @@ app.post('/api/enrol/options', csrf, async (req, res, next) => {
         const codeHash = createHash('sha256').update(code).digest('hex');
         await tx.run('INSERT INTO users(id,display_name,role) VALUES(?,?,?)', [userId, displayName, 'student']);
         await tx.run('INSERT INTO enrolments(course_id,student_id) VALUES(?,?)', ['IS451', userId]);
+        await tx.run('INSERT INTO grades(course_id,student_id,assessment,grade) VALUES(?,?,?,?)', ['IS451', userId, 'Information Security Quiz', 88]);
+        await tx.run('INSERT INTO grades(course_id,student_id,assessment,grade) VALUES(?,?,?,?)', ['IS451', userId, 'Access Control Lab', 92]);
         await tx.run('INSERT INTO enrolment_codes(code_hash,user_id,expires_at) VALUES(?,?,?)', [codeHash, userId, Date.now() + 48 * 60 * 60 * 1000]);
         return { userId, code };
       });
