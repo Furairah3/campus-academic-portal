@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+database/*.db
+database/*.db-*
+*.log
+.dist/
+.DS_Store
