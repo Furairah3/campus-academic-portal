@@ -1,6 +1,6 @@
 # Campus Academic Portal — IS451 prototype
 
-A local student records demo with a React interface, Express API, SQLite storage, genuine WebAuthn passkeys, server-side role checks, and an AES-256-GCM integrity demonstration. All people and grades are fictional. This is classroom software, not a production records system.
+A student records demo with a React interface, Express API, SQLite-compatible storage, genuine WebAuthn passkeys, server-side role checks, and an AES-256-GCM integrity demonstration. Local development uses a SQLite file; Vercel production uses Turso. All people and grades are fictional. This is classroom software, not a production records system.
 
 ## Run locally
 
@@ -20,7 +20,7 @@ On localhost, modern browsers allow WebAuthn without HTTPS. The relying-party ID
 ## Commands and accounts
 
 - `npm run dev` starts the API at port 3000 and watches/rebuilds the React client with Vite.
-- `npm start` starts the API only (production serves the built React app from `dist`). Set `NODE_ENV=production`, `ORIGIN`, `RP_ID`, and a strong `SESSION_SECRET` before using that mode.
+- `npm start` starts the local API and serves the React build from `dist`.
 - `npm run build` creates the React production bundle.
 - `npm test` runs the automated security and cryptography unit checks.
 - Fictional users: S1 Ama Mensah; S2 Kojo Owusu; L1 Dr. Abena Boateng. L1 teaches IS451; S1 and S2 are enrolled.
@@ -31,4 +31,10 @@ Automated tests cover the ownership/role policy helpers, grade input validation,
 
 ## Architecture and limits
 
-See `docs/technical-notes.md` for the architecture, permission matrix, WebAuthn flow, encryption model, limitations, and deployment notes. Local SQLite is not persistent storage for serverless Vercel functions. A hosted database, shared session store, HTTPS origin and production RP configuration would be needed before deployment. No repository initialization, commit, push, or deployment was performed.
+See `docs/technical-notes.md` for the architecture, permission matrix, WebAuthn flow, encryption model, limitations, and deployment notes. Production uses Turso for persistent records, passkeys, challenges, and sessions. Vercel requires production secrets and passkey origin settings before the app can start.
+
+## Vercel deployment
+
+The repository is connected to Vercel as `Furairah3/campus-academic-portal`. Production uses Turso; local development keeps using `DATABASE_PATH`. Set `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `SESSION_SECRET`, `AES_DEMO_KEY`, `RP_ID`, `RP_NAME`, and `ORIGIN` in the Vercel project's Production environment. Do not commit real values or send them in chat. The app refuses to start in production when required secrets or passkey origin settings are missing.
+
+Vercel's Express integration serves static files from `public`; the Vercel build therefore writes the Vite bundle there. Local development continues to serve `dist`. Use the HTTPS hostname assigned to the Vercel project for `RP_ID` (hostname only) and `ORIGIN` (full `https://` origin). Create the Turso database through the Vercel Marketplace integration, which supplies the Turso URL and authentication token to the project.

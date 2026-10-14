@@ -5,10 +5,10 @@
 ```mermaid
 flowchart LR
   B[Browser: React + WebAuthn authenticator]
-  V[Vite-built React bundle served by Express]
+  V[Vite-built React bundle: local Express / Vercel static assets]
   E[Express API: challenge + verification + RBAC]
   W[SimpleWebAuthn server verifier]
-  S[SQLite: users, grades, credentials, sessions]
+  S[libSQL: local file in development / Turso in production]
   C[Node crypto: AES-256-GCM demo key]
   B -->|HTTP JSON + HttpOnly session cookie| V --> E
   E <--> W
@@ -17,7 +17,7 @@ flowchart LR
   B -. private key remains on authenticator .-> W
 ```
 
-Trust boundaries: the browser and submitted IDs are untrusted; Express loads role, ownership, course assignment and credential details from SQLite. WebAuthn challenges are generated and checked on the server. The browser receives only ceremony options and public response data. The private passkey key never goes to this app.
+Trust boundaries: the browser and submitted IDs are untrusted; Express loads role, ownership, course assignment and credential details from libSQL. Development uses a local database file; production uses Turso. WebAuthn challenges are generated and checked on the server. The browser receives only ceremony options and public response data. The private passkey key never goes to this app.
 
 ## Permission matrix
 
@@ -35,7 +35,7 @@ The grade routes check the authenticated session first, then role, assignment/en
 
 `npm run seed` creates random 144-bit one-time codes, stores SHA-256 hashes, and prints the plaintext once for local handoff. Codes expire in 48 hours and are checked against the requested pre-provisioned account. Registration options bind an account ID, RP ID, and server challenge; the server verifies origin, RP ID, and challenge using SimpleWebAuthn before storing credential ID, public key, counter, transports, device type and backup state. Authentication options are fresh and limited to credentials already associated with the requested account. The assertion is verified server-side before a session is regenerated and the account ID is placed in it.
 
-The session ID is held in an HttpOnly, SameSite=Lax cookie; session data is in SQLite. Development uses a random in-memory process secret if `SESSION_SECRET` is absent, so restarting invalidates sessions. Production mode refuses to start without a configured secret and sets Secure cookies. State-changing routes require a CSRF token and matching Origin. Localhost HTTP is a browser secure context exception; the default development origin is `http://localhost:3000` with RP ID `localhost`. Production needs HTTPS, a real RP ID matching the domain, and an exact `ORIGIN` setting. Account recovery and code distribution are intentionally manual classroom procedures, not identity proofing. Vite watches and rebuilds the React bundle during `npm run dev`; Express serves the bundle and API on one origin.
+The session ID is held in an HttpOnly, SameSite=Lax cookie; session data is stored in the same database as the app. Development uses a random in-memory process secret if `SESSION_SECRET` is absent, so restarting invalidates sessions. Production mode refuses to start without a configured secret and sets Secure cookies. State-changing routes require a CSRF token and matching Origin. Localhost HTTP is a browser secure context exception; the default development origin is `http://localhost:3000` with RP ID `localhost`. Production needs HTTPS, a real RP ID matching the domain, and an exact `ORIGIN` setting. Account recovery and code distribution are intentionally manual classroom procedures, not identity proofing. Vite watches and rebuilds the React bundle during `npm run dev`; Express serves the bundle and API locally. Vercel serves the built frontend from `public` and runs Express as a Function.
 
 ## AES-GCM
 
@@ -43,4 +43,4 @@ The Protected Academic Note page uses separate authenticated server routes to en
 
 ## Limitations and deployment
 
-This is a classroom prototype. The one-time code is not university identity verification. The app has no account recovery, credential revocation UI, rate limiting, production monitoring, key rotation, or production-grade secret manager. SQLite files and sessions are local. A Vercel deployment must replace local SQLite/session storage with durable shared services, set HTTPS/RP/origin correctly, provision secrets securely, add abuse controls and test with real devices before deployment. Do not deploy this build as an institutional records system.
+This is a classroom prototype. The one-time code is not university identity verification. The app has no account recovery, credential revocation UI, rate limiting, production monitoring, key rotation, or production-grade secret manager. Local development stores data in a SQLite-compatible file; production data and sessions use Turso. Vercel requires the Turso URL and token, application secrets, and HTTPS/RP/origin settings. Do not deploy this build as an institutional records system.

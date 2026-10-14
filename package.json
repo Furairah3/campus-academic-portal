@@ -11,9 +11,9 @@
     "seed": "node scripts/seed.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.0",
-    "better-sqlite3": "^12.2.0",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
