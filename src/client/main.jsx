@@ -50,7 +50,15 @@ function App() {
   const [notePayload, setNotePayload] = useState(null);
   const [noteRecovered, setNoteRecovered] = useState('');
   const [tamperDetected, setTamperDetected] = useState(null);
-  const [userId, setUserId] = useState('S1');
+  const [demoAccountIds, setDemoAccountIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('campus.demoAccountIds') || '[]');
+      return Array.isArray(saved) ? saved.filter(id => /^D-[A-F0-9]{8}$/.test(id)).slice(-100) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [userId, setUserId] = useState(() => demoAccountIds.at(-1) || 'S1');
   const [code, setCode] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [edit, setEdit] = useState({ studentId: 'S1', assessment: 'Security lab', grade: '' });
@@ -118,7 +126,7 @@ function App() {
       const credential = await startRegistration({ optionsJSON: options });
       await api('/api/enrol/verify', { method: 'POST', body: JSON.stringify(credential) });
       setCode('');
-      setNotice('Your passkey is registered. You can now sign in to Campus Academic Portal.');
+      setNotice(`Passkey registered for ${userId}. Choose that account from the sign-in list.`);
       setPage('signin');
     } catch (requestError) {
       setError(requestError.message);
@@ -135,6 +143,13 @@ function App() {
         method: 'POST',
         body: JSON.stringify({ createDemoAccount: true, displayName }),
       });
+      const nextIds = [...new Set([...demoAccountIds, result.demoAccount.userId])].slice(-100);
+      setDemoAccountIds(nextIds);
+      try {
+        localStorage.setItem('campus.demoAccountIds', JSON.stringify(nextIds));
+      } catch {
+        // The current page still remembers the account if browser storage is unavailable.
+      }
       setUserId(result.demoAccount.userId);
       setCode(result.demoAccount.code);
       setNotice(`Student demo account ${result.demoAccount.userId} is ready. Register its passkey below.`);
@@ -304,8 +319,8 @@ function App() {
           {error && <div className="alert alert-error" role="alert"><span className="alert-icon">!</span><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><Icon name="close" size={15} /></button></div>}
 
           {page === 'overview' && <Overview onSignIn={() => navigate('signin')} onRegister={() => navigate('enroll')} />}
-          {page === 'signin' && <SignInForm userId={userId} setUserId={setUserId} busy={busy} onSubmit={signIn} onRegister={() => navigate('enroll')} />}
-          {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} onSubmit={enroll} onSignIn={() => navigate('signin')} />}
+          {page === 'signin' && <SignInForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} busy={busy} onSubmit={signIn} onRegister={() => navigate('enroll')} />}
+          {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} onSubmit={enroll} onSignIn={() => navigate('signin')} />}
           {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} />}
           {page === 'records' && <StudentRecords user={user} records={records} onSignIn={() => navigate('signin')} />}
           {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onSignIn={() => navigate('signin')} />}
@@ -349,14 +364,14 @@ function Overview({ onSignIn, onRegister }) {
   );
 }
 
-function SignInForm({ userId, setUserId, busy, onSubmit, onRegister }) {
+function SignInForm({ userId, setUserId, demoAccountIds, busy, onSubmit, onRegister }) {
   return (
     <section className="auth-page">
       <div className="auth-intro"><span className="eyebrow">CAMPUS ACADEMIC PORTAL</span><h2>Sign in to your<br /><span>academic account</span></h2><p>Use the passkey registered to your university demo account. Your browser or device will ask you to confirm.</p><div className="auth-support"><Icon name="book" size={20} /><span>Secure access to your academic records</span></div></div>
       <form className="form-card" onSubmit={onSubmit}>
         <div className="form-card-heading"><span className="eyebrow">ACCOUNT ACCESS</span><h3>Welcome back</h3><p>Choose your account to continue with your passkey.</p></div>
         <label htmlFor="signin-account">Academic account</label>
-        <select id="signin-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option></select>
+        <select id="signin-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option>{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo student account</option>)}</select>
         <button className="button button-primary button-block" disabled={busy}>{busy ? 'Waiting for your device...' : 'Continue with passkey'} <Icon name="arrow" size={17} /></button>
         <p className="form-help">Your passkey stays with your device. No password is needed.</p>
         <div className="form-divider"><span>New to passkey access?</span></div>
@@ -366,7 +381,7 @@ function SignInForm({ userId, setUserId, busy, onSubmit, onRegister }) {
   );
 }
 
-function EnrollmentForm({ userId, setUserId, code, setCode, displayName, setDisplayName, busy, onCreateDemo, onSubmit, onSignIn }) {
+function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, displayName, setDisplayName, busy, onCreateDemo, onSubmit, onSignIn }) {
   return (
     <section className="auth-page">
       <div className="auth-intro"><span className="eyebrow">ACCOUNT SETUP</span><h2>Register your<br /><span>passkey</span></h2><p>Connect a passkey to your assigned classroom account. Your browser or device will guide you through a short confirmation.</p><div className="auth-support"><Icon name="user" size={20} /><span>Use only the account and one-time code issued to you.</span></div></div>
@@ -378,7 +393,7 @@ function EnrollmentForm({ userId, setUserId, code, setCode, displayName, setDisp
         <p className="form-help">This creates a fictional student account for your own passkey. Public signups cannot receive lecturer access.</p>
         <div className="form-divider"><span>Or use an issued code</span></div>
         <label htmlFor="enroll-account">Academic account</label>
-        <select id="enroll-account" value={userId} onChange={event => setUserId(event.target.value)}>{userId.startsWith('D-') && <option value={userId}>{userId} - Demo student</option>}<option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option></select>
+        <select id="enroll-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option>{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo student account</option>)}</select>
         <label htmlFor="enroll-code">One-time registration code</label>
         <input id="enroll-code" type="password" value={code} onChange={event => setCode(event.target.value)} autoComplete="off" required minLength={12} placeholder="Enter your issued code" />
         <button className="button button-primary button-block" disabled={busy}>{busy ? 'Waiting for your device...' : 'Register passkey'} <Icon name="arrow" size={17} /></button>
