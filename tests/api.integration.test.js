@@ -52,6 +52,24 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   const csrf = (await csrfResponse.json()).csrfToken;
   const cookie = csrfResponse.headers.get('set-cookie')?.split(';')[0];
   assert.ok(cookie, 'session cookie is issued for CSRF state');
+  const demoAccountResponse = await fetch(`${base}/api/enrol/options`, {
+    method: 'POST', headers: { Origin: base, Cookie: cookie, 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ createDemoAccount: true, displayName: 'Guest Tester' }),
+  });
+  assert.equal(demoAccountResponse.status, 201);
+  const { demoAccount } = await demoAccountResponse.json();
+  assert.match(demoAccount.userId, /^D-[A-F0-9]{8}$/);
+  assert.ok(demoAccount.code.length >= 12);
+  const demoOptions = await fetch(`${base}/api/enrol/options`, {
+    method: 'POST', headers: { Origin: base, Cookie: cookie, 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: demoAccount.userId, code: demoAccount.code }),
+  });
+  assert.equal(demoOptions.status, 200, 'new demo account can request passkey registration options');
+  const duplicateDemoAccount = await fetch(`${base}/api/enrol/options`, {
+    method: 'POST', headers: { Origin: base, Cookie: cookie, 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ createDemoAccount: true, displayName: 'Another Tester' }),
+  });
+  assert.equal(duplicateDemoAccount.status, 409, 'a browser session can create only one demo account');
   const invalidCode = await fetch(`${base}/api/enrol/options`, {
     method: 'POST', headers: { Origin: base, Cookie: cookie, 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId: 'S1', code: 'incorrect-code' }),

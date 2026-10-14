@@ -22,6 +22,7 @@ if (aesKey.length !== 32) throw new Error('AES_DEMO_KEY must be a base64 encoded
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '20kb' }));
 
 class DatabaseSessionStore extends session.Store {
@@ -116,6 +117,28 @@ app.post('/api/logout', authenticated, csrf, (req, res, next) => req.session.des
 
 app.post('/api/enrol/options', csrf, async (req, res, next) => {
   try {
+    if (req.body.createDemoAccount) {
+      if (req.session.demoAccountId) return res.status(409).json({ error: 'A demo account has already been created in this browser session' });
+      const displayName = String(req.body.displayName || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+      if (displayName.length < 2) return res.status(400).json({ error: 'Enter a name with at least 2 characters' });
+      const created = await db.transaction(async tx => {
+        const count = await tx.get("SELECT COUNT(*) AS count FROM users WHERE id LIKE 'D-%'");
+        if (Number(count?.count || 0) >= 100) return null;
+        let userId;
+        do {
+          userId = 'D-' + randomBytes(4).toString('hex').toUpperCase();
+        } while (await tx.get('SELECT 1 FROM users WHERE id=?', [userId]));
+        const code = randomBytes(18).toString('base64url');
+        const codeHash = createHash('sha256').update(code).digest('hex');
+        await tx.run('INSERT INTO users(id,display_name,role) VALUES(?,?,?)', [userId, displayName, 'student']);
+        await tx.run('INSERT INTO enrolments(course_id,student_id) VALUES(?,?)', ['IS451', userId]);
+        await tx.run('INSERT INTO enrolment_codes(code_hash,user_id,expires_at) VALUES(?,?,?)', [codeHash, userId, Date.now() + 48 * 60 * 60 * 1000]);
+        return { userId, code };
+      });
+      if (!created) return res.status(429).json({ error: 'The classroom demo has reached its account limit' });
+      req.session.demoAccountId = created.userId;
+      return res.status(201).json({ demoAccount: created });
+    }
     const userId = String(req.body.userId || '').trim().toUpperCase();
     const code = String(req.body.code || '').trim();
     const user = await db.get('SELECT * FROM users WHERE id=?', [userId]);
