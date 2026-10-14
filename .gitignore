@@ -1,6 +1,7 @@
 node_modules/
 dist/
-/public/
+/public/index.html
+/public/assets/
 .env
 .env.*
 !.env.example
