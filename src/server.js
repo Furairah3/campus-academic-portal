@@ -11,6 +11,11 @@ import { fileURLToPath } from 'node:url';
 
 await initializeDatabase();
 await seedDemoData();
+if (process.env.LECTURER_INVITE_CODE?.trim()) {
+  const inviteCode = process.env.LECTURER_INVITE_CODE.trim();
+  const tokenHash = createHash('sha256').update(inviteCode).digest('hex');
+  await db.run('INSERT OR IGNORE INTO lecturer_invites(token_hash,expires_at) VALUES(?,?)', [tokenHash, Date.now() + 48 * 60 * 60 * 1000]);
+}
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
