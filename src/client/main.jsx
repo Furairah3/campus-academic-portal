@@ -56,13 +56,14 @@ function App() {
   const [demoAccountIds, setDemoAccountIds] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('campus.demoAccountIds') || '[]');
-      return Array.isArray(saved) ? saved.filter(id => /^D-[A-F0-9]{8}$/.test(id)).slice(-100) : [];
+      return Array.isArray(saved) ? saved.filter(id => /^(?:D|L)-[A-F0-9]{8}$/.test(id)).slice(-100) : [];
     } catch {
       return [];
     }
   });
   const [userId, setUserId] = useState(() => demoAccountIds.at(-1) || 'S1');
   const [code, setCode] = useState('');
+  const [lecturerInviteCode, setLecturerInviteCode] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [edit, setEdit] = useState({ studentId: 'S1', assessment: 'Security lab', grade: '' });
 
@@ -121,6 +122,16 @@ function App() {
     setNotice('');
   }
 
+  function rememberDemoAccount(id) {
+    const nextIds = [...new Set([...demoAccountIds, id])].slice(-100);
+    setDemoAccountIds(nextIds);
+    try {
+      localStorage.setItem('campus.demoAccountIds', JSON.stringify(nextIds));
+    } catch {
+      // The current page still remembers the account if browser storage is unavailable.
+    }
+  }
+
   async function enroll(event) {
     event.preventDefault();
     setBusy(true);
@@ -147,16 +158,30 @@ function App() {
         method: 'POST',
         body: JSON.stringify({ createDemoAccount: true, displayName, courseIds: selectedCourseIds }),
       });
-      const nextIds = [...new Set([...demoAccountIds, result.demoAccount.userId])].slice(-100);
-      setDemoAccountIds(nextIds);
-      try {
-        localStorage.setItem('campus.demoAccountIds', JSON.stringify(nextIds));
-      } catch {
-        // The current page still remembers the account if browser storage is unavailable.
-      }
+      rememberDemoAccount(result.demoAccount.userId);
       setUserId(result.demoAccount.userId);
       setCode(result.demoAccount.code);
       setNotice(`Student demo account ${result.demoAccount.userId} is ready. Register its passkey below.`);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createLecturerAccount() {
+    setBusy(true);
+    clearMessages();
+    try {
+      const result = await api('/api/enrol/options', {
+        method: 'POST',
+        body: JSON.stringify({ createLecturerAccount: true, displayName, inviteCode: lecturerInviteCode, courseId: selectedCourseId }),
+      });
+      rememberDemoAccount(result.lecturerAccount.userId);
+      setUserId(result.lecturerAccount.userId);
+      setCode(result.lecturerAccount.code);
+      setLecturerInviteCode('');
+      setNotice(`Lecturer account ${result.lecturerAccount.userId} is ready. Register its passkey below.`);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -263,7 +288,7 @@ function App() {
     try {
       await api('/api/grades', {
         method: 'PUT',
-        body: JSON.stringify({ ...edit, courseId: roster.course.id, grade: Number(edit.grade) }),
+        body: JSON.stringify({ ...edit, studentId: roster.students.some(student => student.id === edit.studentId) ? edit.studentId : roster.students[0]?.id, courseId: roster.course.id, grade: Number(edit.grade) }),
       });
       setNotice('Grade saved successfully.');
       setRoster(await api('/api/lecturer/roster'));
@@ -337,7 +362,7 @@ function App() {
 
           {page === 'overview' && <Overview onSignIn={() => navigate('signin')} onRegister={() => navigate('enroll')} />}
           {page === 'signin' && <SignInForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} busy={busy} onSubmit={signIn} onRegister={() => navigate('enroll')} />}
-          {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} onSubmit={enroll} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseIds={selectedCourseIds} setSelectedCourseIds={setSelectedCourseIds} />}
+          {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} lecturerInviteCode={lecturerInviteCode} setLecturerInviteCode={setLecturerInviteCode} onCreateLecturer={createLecturerAccount} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onSubmit={enroll} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseIds={selectedCourseIds} setSelectedCourseIds={setSelectedCourseIds} />}
           {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onEnrollCourse={enrollInCourse} />}
           {page === 'records' && <StudentRecords user={user} records={records} onSignIn={() => navigate('signin')} />}
           {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onSignIn={() => navigate('signin')} />}
@@ -388,7 +413,7 @@ function SignInForm({ userId, setUserId, demoAccountIds, busy, onSubmit, onRegis
       <form className="form-card" onSubmit={onSubmit}>
         <div className="form-card-heading"><span className="eyebrow">ACCOUNT ACCESS</span><h3>Welcome back</h3><p>Choose your account to continue with your passkey.</p></div>
         <label htmlFor="signin-account">Academic account</label>
-        <select id="signin-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option>{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo student account</option>)}</select>
+        <select id="signin-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option>{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo {id.startsWith('L-') ? 'lecturer' : 'student'} account</option>)}</select>
         <button className="button button-primary button-block" disabled={busy}>{busy ? 'Waiting for your device...' : 'Continue with passkey'} <Icon name="arrow" size={17} /></button>
         <p className="form-help">Your passkey stays with your device. No password is needed.</p>
         <div className="form-divider"><span>New to passkey access?</span></div>
@@ -398,20 +423,27 @@ function SignInForm({ userId, setUserId, demoAccountIds, busy, onSubmit, onRegis
   );
 }
 
-function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, displayName, setDisplayName, busy, onCreateDemo, onSubmit, onSignIn, courses, selectedCourseIds, setSelectedCourseIds }) {
+function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, displayName, setDisplayName, busy, onCreateDemo, lecturerInviteCode, setLecturerInviteCode, onCreateLecturer, selectedCourseId, setSelectedCourseId, onSubmit, onSignIn, courses, selectedCourseIds, setSelectedCourseIds }) {
   return (
     <section className="auth-page">
       <div className="auth-intro"><span className="eyebrow">ACCOUNT SETUP</span><h2>Register your<br /><span>passkey</span></h2><p>Connect a passkey to your assigned classroom account. Your browser or device will guide you through a short confirmation.</p><div className="auth-support"><Icon name="user" size={20} /><span>Use only the account and one-time code issued to you.</span></div></div>
       <form className="form-card" onSubmit={onSubmit}>
         <div className="form-card-heading"><span className="eyebrow">PASSKEY REGISTRATION</span><h3>Set up account access</h3><p>Use an issued code or create a fictional student demo account.</p></div>
-        <label htmlFor="demo-name">Try the portal</label>
+        <label htmlFor="demo-name">Your display name</label>
         <input id="demo-name" value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={60} autoComplete="name" placeholder="Your display name" />
         <fieldset className="course-choice-list"><legend>Choose your courses</legend>{courses.map(course => <label className="course-choice" key={course.id}><input type="checkbox" checked={selectedCourseIds.includes(course.id)} onChange={event => setSelectedCourseIds(current => event.target.checked ? [...current, course.id] : current.filter(id => id !== course.id))} /><span><b>{course.id}</b> — {course.title}</span></label>)}</fieldset>
         <button className="button button-secondary button-block" type="button" onClick={onCreateDemo} disabled={busy || displayName.trim().length < 2 || selectedCourseIds.length === 0}>{busy ? 'Preparing account...' : 'Create my student account'}</button>
         <p className="form-help">This creates your own fictional student account and enrolls it in the selected courses. Public signups cannot receive lecturer access.</p>
+        <div className="form-divider"><span>Lecturer account</span></div>
+        <p className="form-help lecturer-invite-help">Lecturer access requires a single-use invitation code from the portal administrator.</p>
+        <label htmlFor="lecturer-invite">One-time lecturer invitation code</label>
+        <input id="lecturer-invite" type="password" value={lecturerInviteCode} onChange={event => setLecturerInviteCode(event.target.value)} autoComplete="off" placeholder="Enter your lecturer invitation" />
+        <label htmlFor="lecturer-course">Assigned course</label>
+        <select id="lecturer-course" value={selectedCourseId} onChange={event => setSelectedCourseId(event.target.value)}><option value="">Choose the course you will teach</option>{courses.map(course => <option key={course.id} value={course.id}>{course.id} - {course.title}</option>)}</select>
+        <button className="button button-secondary button-block" type="button" onClick={onCreateLecturer} disabled={busy || displayName.trim().length < 2 || lecturerInviteCode.trim().length < 20 || !selectedCourseId}>{busy ? 'Preparing account...' : 'Create lecturer account'}</button>
         <div className="form-divider"><span>Or use an issued code</span></div>
         <label htmlFor="enroll-account">Academic account</label>
-        <select id="enroll-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option>{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo student account</option>)}</select>
+        <select id="enroll-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option>{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo {id.startsWith('L-') ? 'lecturer' : 'student'} account</option>)}</select>
         <label htmlFor="enroll-code">One-time registration code</label>
         <input id="enroll-code" type="password" value={code} onChange={event => setCode(event.target.value)} autoComplete="off" required minLength={12} placeholder="Enter your issued code" />
         <button className="button button-primary button-block" disabled={busy}>{busy ? 'Waiting for your device...' : 'Register passkey'} <Icon name="arrow" size={17} /></button>
@@ -470,7 +502,7 @@ function LecturerWorkspace({ user, roster, edit, setEdit, onSave, onSignIn, onOp
         </div>
         {!compact && <form className="grade-form" onSubmit={onSave}>
           <span className="eyebrow">ASSESSMENT MANAGEMENT</span><h3>Update a grade</h3><p>Changes are saved to this course record.</p>
-          <label htmlFor="grade-student">Student</label><select id="grade-student" value={edit.studentId} onChange={event => setEdit({ ...edit, studentId: event.target.value })}><option value="S1">S1 - Ama Mensah</option><option value="S2">S2 - Kojo Owusu</option></select>
+          <label htmlFor="grade-student">Student</label><select id="grade-student" value={roster.students.some(student => student.id === edit.studentId) ? edit.studentId : roster.students[0]?.id || ''} onChange={event => setEdit({ ...edit, studentId: event.target.value })} required disabled={!roster.students.length}>{[...new Map(roster.students.map(student => [student.id, student])).values()].map(student => <option key={student.id} value={student.id}>{student.id} - {student.name}</option>)}</select>
           <label htmlFor="grade-assessment">Assessment</label><input id="grade-assessment" value={edit.assessment} onChange={event => setEdit({ ...edit, assessment: event.target.value })} required maxLength={60} />
           <label htmlFor="grade-score">Grade <span className="label-hint">0 to 100</span></label><input id="grade-score" type="number" min="0" max="100" step="1" value={edit.grade} onChange={event => setEdit({ ...edit, grade: event.target.value })} required />
           <button className="button button-primary button-block">Save grade <Icon name="arrow" size={16} /></button>

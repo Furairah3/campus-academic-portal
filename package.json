@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "build": "vite build --configLoader runner",
     "test": "node --test",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "create-lecturer-invite": "node scripts/create-lecturer-invite.js"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

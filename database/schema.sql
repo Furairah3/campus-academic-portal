@@ -9,6 +9,17 @@ CREATE TABLE IF NOT EXISTS courses (
   title TEXT NOT NULL,
   lecturer_id TEXT NOT NULL REFERENCES users(id)
 );
+CREATE TABLE IF NOT EXISTS course_lecturers (
+  course_id TEXT NOT NULL REFERENCES courses(id),
+  lecturer_id TEXT NOT NULL REFERENCES users(id),
+  PRIMARY KEY(course_id, lecturer_id)
+);
+CREATE TABLE IF NOT EXISTS lecturer_invites (
+  token_hash TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL,
+  claimed_at INTEGER,
+  claimed_by TEXT REFERENCES users(id)
+);
 CREATE TABLE IF NOT EXISTS enrolments (
   course_id TEXT NOT NULL REFERENCES courses(id),
   student_id TEXT NOT NULL REFERENCES users(id),

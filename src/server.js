@@ -136,6 +136,34 @@ app.post('/api/enrol/options', csrf, async (req, res, next) => {
       if (!result.changes) return res.status(409).json({ error: 'You are already enrolled in this course' });
       return res.status(201).json({ ok: true, courseId });
     }
+    if (req.body.createLecturerAccount) {
+      const displayName = String(req.body.displayName || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+      const inviteCode = String(req.body.inviteCode || '').trim();
+      const courseId = String(req.body.courseId || '').trim().toUpperCase();
+      if (displayName.length < 2) return res.status(400).json({ error: 'Enter a name with at least 2 characters' });
+      if (inviteCode.length < 20) return res.status(400).json({ error: 'Enter a valid lecturer invitation code' });
+      const created = await db.transaction(async tx => {
+        const tokenHash = createHash('sha256').update(inviteCode).digest('hex');
+        const invite = await tx.get('SELECT token_hash FROM lecturer_invites WHERE token_hash=? AND claimed_at IS NULL AND expires_at>=?', [tokenHash, Date.now()]);
+        const course = await tx.get('SELECT id FROM courses WHERE id=?', [courseId]);
+        if (!invite || !course) return { invalidInvite: true };
+        const claimed = await tx.run('UPDATE lecturer_invites SET claimed_at=? WHERE token_hash=? AND claimed_at IS NULL AND expires_at>=?', [Date.now(), tokenHash, Date.now()]);
+        if (claimed.changes !== 1) return { invalidInvite: true };
+        let userId;
+        do { userId = 'L-' + randomBytes(4).toString('hex').toUpperCase(); }
+        while (await tx.get('SELECT 1 FROM users WHERE id=?', [userId]));
+        const code = randomBytes(18).toString('base64url');
+        const codeHash = createHash('sha256').update(code).digest('hex');
+        await tx.run('INSERT INTO users(id,display_name,role) VALUES(?,?,?)', [userId, displayName, 'lecturer']);
+        await tx.run('UPDATE lecturer_invites SET claimed_by=? WHERE token_hash=?', [userId, tokenHash]);
+        await tx.run('INSERT INTO course_lecturers(course_id,lecturer_id) VALUES(?,?)', [courseId, userId]);
+        await tx.run('INSERT INTO enrolment_codes(code_hash,user_id,expires_at) VALUES(?,?,?)', [codeHash, userId, Date.now() + 48 * 60 * 60 * 1000]);
+        return { userId, code };
+      });
+      if (created?.invalidInvite) return res.status(400).json({ error: 'Lecturer invitation is invalid, expired, or already used' });
+      req.session.demoAccountId = created.userId;
+      return res.status(201).json({ lecturerAccount: created });
+    }
     if (req.body.createDemoAccount) {
       if (req.session.demoAccountId) return res.status(409).json({ error: 'A demo account has already been created in this browser session' });
       const displayName = String(req.body.displayName || '').trim().replace(/\s+/g, ' ').slice(0, 60);
@@ -298,7 +326,7 @@ app.get('/api/records/students/:id', authenticated, async (req, res, next) => {
     if (!student) return res.status(404).json({ error: 'Record not found' });
     const allowed = req.user.role === 'student' && req.user.id === studentId
       ? canReadStudent({ role: req.user.role, userId: req.user.id, targetId: studentId })
-      : await db.get('SELECT 1 FROM enrolments e JOIN courses c ON e.course_id=c.id WHERE e.student_id=? AND c.lecturer_id=?', [studentId, req.user.id]);
+      : await db.get('SELECT 1 FROM enrolments e JOIN course_lecturers cl ON e.course_id=cl.course_id WHERE e.student_id=? AND cl.lecturer_id=?', [studentId, req.user.id]);
     if (!canReadStudent({ role: req.user.role, userId: req.user.id, targetId: studentId, assignedToLecturer: Boolean(allowed) })) {
       return res.status(404).json({ error: 'Record not found' });
     }
@@ -311,7 +339,7 @@ app.get('/api/records/students/:id', authenticated, async (req, res, next) => {
 
 app.get('/api/lecturer/roster', authenticated, lecturer, async (req, res, next) => {
   try {
-    const course = await db.get('SELECT id,title FROM courses WHERE lecturer_id=?', [req.user.id]);
+    const course = await db.get('SELECT c.id,c.title FROM course_lecturers cl JOIN courses c ON c.id=cl.course_id WHERE cl.lecturer_id=? ORDER BY c.id LIMIT 1', [req.user.id]);
     if (!course) return res.json({ course: null, students: [] });
     const students = await db.all('SELECT u.id,u.display_name AS name,g.assessment,g.grade FROM enrolments e JOIN users u ON u.id=e.student_id LEFT JOIN grades g ON g.student_id=e.student_id AND g.course_id=e.course_id WHERE e.course_id=? ORDER BY u.id,g.assessment', [course.id]);
     res.json({ course, students });
@@ -342,7 +370,7 @@ app.put('/api/grades', authenticated, lecturer, csrf, async (req, res, next) => 
     const { studentId, courseId, assessment, grade } = req.body;
     if (!isValidGradeChange({ studentId, courseId, assessment, grade })) return res.status(400).json({ error: 'Invalid grade details' });
     const permitted = await db.get(
-      'SELECT 1 FROM courses c JOIN enrolments e ON e.course_id=c.id WHERE c.id=? AND c.lecturer_id=? AND e.student_id=?',
+      'SELECT 1 FROM course_lecturers cl JOIN enrolments e ON e.course_id=cl.course_id WHERE cl.course_id=? AND cl.lecturer_id=? AND e.student_id=?',
       [courseId, req.user.id, studentId],
     );
     if (!canEditGrade({ role: req.user.role, assignedToLecturer: Boolean(permitted), studentEnrolled: Boolean(permitted) })) {
