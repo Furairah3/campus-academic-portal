@@ -104,6 +104,14 @@ async function consumeChallenge(req, kind) {
 }
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/api/enrol/options', async (_req, res, next) => {
+  try {
+    const courses = await db.all('SELECT id,title FROM courses ORDER BY id');
+    res.json({ courses });
+  } catch (error) {
+    next(error);
+  }
+});
 app.get('/api/csrf', (req, res) => {
   req.session.csrfToken ||= randomBytes(24).toString('base64url');
   res.json({ csrfToken: req.session.csrfToken });
@@ -117,11 +125,26 @@ app.post('/api/logout', authenticated, csrf, (req, res, next) => req.session.des
 
 app.post('/api/enrol/options', csrf, async (req, res, next) => {
   try {
+    if (req.body.enrollCourse) {
+      const user = await db.get('SELECT id,role FROM users WHERE id=?', [req.session.userId]);
+      if (!user) return res.status(401).json({ error: 'Sign in required' });
+      if (user.role !== 'student') return res.status(403).json({ error: 'Only student accounts can enroll in courses' });
+      const courseId = String(req.body.courseId || '').trim().toUpperCase();
+      const course = await db.get('SELECT id FROM courses WHERE id=?', [courseId]);
+      if (!course) return res.status(404).json({ error: 'Course not found' });
+      const result = await db.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES(?,?)', [courseId, user.id]);
+      if (!result.changes) return res.status(409).json({ error: 'You are already enrolled in this course' });
+      return res.status(201).json({ ok: true, courseId });
+    }
     if (req.body.createDemoAccount) {
       if (req.session.demoAccountId) return res.status(409).json({ error: 'A demo account has already been created in this browser session' });
       const displayName = String(req.body.displayName || '').trim().replace(/\s+/g, ' ').slice(0, 60);
       if (displayName.length < 2) return res.status(400).json({ error: 'Enter a name with at least 2 characters' });
+      const courseIds = [...new Set((Array.isArray(req.body.courseIds) ? req.body.courseIds : ['IS451']).map(id => String(id).trim().toUpperCase()))];
+      if (!courseIds.length || courseIds.length > 10) return res.status(400).json({ error: 'Choose between 1 and 10 courses' });
       const created = await db.transaction(async tx => {
+        const courses = await tx.all(`SELECT id FROM courses WHERE id IN (${courseIds.map(() => '?').join(',')})`, courseIds);
+        if (courses.length !== courseIds.length) return { invalidCourses: true };
         const count = await tx.get("SELECT COUNT(*) AS count FROM users WHERE id LIKE 'D-%'");
         if (Number(count?.count || 0) >= 100) return null;
         let userId;
@@ -131,12 +154,15 @@ app.post('/api/enrol/options', csrf, async (req, res, next) => {
         const code = randomBytes(18).toString('base64url');
         const codeHash = createHash('sha256').update(code).digest('hex');
         await tx.run('INSERT INTO users(id,display_name,role) VALUES(?,?,?)', [userId, displayName, 'student']);
-        await tx.run('INSERT INTO enrolments(course_id,student_id) VALUES(?,?)', ['IS451', userId]);
-        await tx.run('INSERT INTO grades(course_id,student_id,assessment,grade) VALUES(?,?,?,?)', ['IS451', userId, 'Information Security Quiz', 88]);
-        await tx.run('INSERT INTO grades(course_id,student_id,assessment,grade) VALUES(?,?,?,?)', ['IS451', userId, 'Access Control Lab', 92]);
+        for (const courseId of courseIds) await tx.run('INSERT INTO enrolments(course_id,student_id) VALUES(?,?)', [courseId, userId]);
+        if (courseIds.includes('IS451')) {
+          await tx.run('INSERT INTO grades(course_id,student_id,assessment,grade) VALUES(?,?,?,?)', ['IS451', userId, 'Information Security Quiz', 88]);
+          await tx.run('INSERT INTO grades(course_id,student_id,assessment,grade) VALUES(?,?,?,?)', ['IS451', userId, 'Access Control Lab', 92]);
+        }
         await tx.run('INSERT INTO enrolment_codes(code_hash,user_id,expires_at) VALUES(?,?,?)', [codeHash, userId, Date.now() + 48 * 60 * 60 * 1000]);
         return { userId, code };
       });
+      if (created?.invalidCourses) return res.status(400).json({ error: 'One or more selected courses are unavailable' });
       if (!created) return res.status(429).json({ error: 'The classroom demo has reached its account limit' });
       req.session.demoAccountId = created.userId;
       return res.status(201).json({ demoAccount: created });

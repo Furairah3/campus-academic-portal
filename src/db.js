@@ -72,6 +72,9 @@ export async function seedDemoData() {
     await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['S2', 'Kojo Owusu', 'student']);
     await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['L1', 'Dr. Abena Boateng', 'lecturer']);
     await tx.run('INSERT OR IGNORE INTO courses(id,title,lecturer_id) VALUES (?,?,?)', ['IS451', 'Information and Systems Security', 'L1']);
+    await tx.run('INSERT OR IGNORE INTO courses(id,title,lecturer_id) VALUES (?,?,?)', ['CS230', 'Operating Systems', 'L1']);
+    await tx.run('INSERT OR IGNORE INTO courses(id,title,lecturer_id) VALUES (?,?,?)', ['CS480', 'Capstone Project', 'L1']);
+    await tx.run('INSERT OR IGNORE INTO courses(id,title,lecturer_id) VALUES (?,?,?)', ['FIN101', 'Finance for Non-Finance Professionals', 'L1']);
     await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['IS451', 'S1']);
     await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['IS451', 'S2']);
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S1', 'Security lab', 86]);

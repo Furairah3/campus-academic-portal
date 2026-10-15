@@ -24,12 +24,12 @@ Trust boundaries: the browser and submitted IDs are untrusted; Express loads rol
 | Action | Student | Lecturer |
 |---|---|---|
 | Own profile and grades | Allow | Own profile only |
-| Other student's grades | Deny | Assigned IS451 students only |
-| Assigned roster | Deny | Allow |
-| Edit grade | Deny | Assigned IS451 only |
+| Other student's grades | Deny | Students enrolled in a course assigned to that lecturer only |
+| Assigned roster | Deny | Allow for the lecturer's assigned course |
+| Edit grade | Deny | Assigned course only |
 | Change roles | Deny | Deny |
 
-The grade routes check the authenticated session first, then role, assignment/enrollment, and input. Student access is scoped to the signed-in ID. The client never supplies a trusted role. SQL values are parameterized.
+The grade routes check the authenticated session first, then role, assignment/enrollment, and input. Student access is scoped to the signed-in ID. The client never supplies a trusted role. SQL values are parameterized. The seeded course catalog includes IS451, Operating Systems (CS230), Capstone Project (CS480), and Finance for Non-Finance Professionals (FIN101). A demo student can select courses during account creation and enroll in additional catalog courses after signing in. Public users can only receive the student role. New course enrollments do not fabricate grades; grades appear after a lecturer records them.
 
 ## WebAuthn and sessions
 

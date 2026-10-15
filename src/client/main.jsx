@@ -46,6 +46,9 @@ function App() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [records, setRecords] = useState(null);
+  const [courseCatalog, setCourseCatalog] = useState([]);
+  const [selectedCourseIds, setSelectedCourseIds] = useState(['IS451']);
+  const [selectedCourseId, setSelectedCourseId] = useState('');
   const [roster, setRoster] = useState(null);
   const [notePayload, setNotePayload] = useState(null);
   const [noteRecovered, setNoteRecovered] = useState('');
@@ -101,6 +104,7 @@ function App() {
 
   useEffect(() => {
     refreshCsrf().then(loadSession).catch(() => setError('The portal could not connect to its local server. Start the app and refresh this page.'));
+    api('/api/enrol/options').then(data => setCourseCatalog(data.courses || [])).catch(requestError => setError(requestError.message));
   }, []);
 
   useEffect(() => {
@@ -141,7 +145,7 @@ function App() {
     try {
       const result = await api('/api/enrol/options', {
         method: 'POST',
-        body: JSON.stringify({ createDemoAccount: true, displayName }),
+        body: JSON.stringify({ createDemoAccount: true, displayName, courseIds: selectedCourseIds }),
       });
       const nextIds = [...new Set([...demoAccountIds, result.demoAccount.userId])].slice(-100);
       setDemoAccountIds(nextIds);
@@ -157,6 +161,19 @@ function App() {
       setError(requestError.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function enrollInCourse() {
+    if (!selectedCourseId) return;
+    clearMessages();
+    try {
+      await api('/api/enrol/options', { method: 'POST', body: JSON.stringify({ enrollCourse: true, courseId: selectedCourseId }) });
+      setRecords(await api('/api/records/me'));
+      setSelectedCourseId('');
+      setNotice('You are enrolled in the selected course. Grades will appear when they are recorded.');
+    } catch (requestError) {
+      setError(requestError.message);
     }
   }
 
@@ -320,8 +337,8 @@ function App() {
 
           {page === 'overview' && <Overview onSignIn={() => navigate('signin')} onRegister={() => navigate('enroll')} />}
           {page === 'signin' && <SignInForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} busy={busy} onSubmit={signIn} onRegister={() => navigate('enroll')} />}
-          {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} onSubmit={enroll} onSignIn={() => navigate('signin')} />}
-          {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} />}
+          {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} onSubmit={enroll} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseIds={selectedCourseIds} setSelectedCourseIds={setSelectedCourseIds} />}
+          {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onEnrollCourse={enrollInCourse} />}
           {page === 'records' && <StudentRecords user={user} records={records} onSignIn={() => navigate('signin')} />}
           {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onSignIn={() => navigate('signin')} />}
           {page === 'note' && <ProtectedNote user={user} payload={notePayload} recovered={noteRecovered} tamperDetected={tamperDetected} onEncrypt={encryptNote} onDecrypt={decryptNote} onTestIntegrity={testNoteIntegrity} onSignIn={() => navigate('signin')} />}
@@ -381,7 +398,7 @@ function SignInForm({ userId, setUserId, demoAccountIds, busy, onSubmit, onRegis
   );
 }
 
-function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, displayName, setDisplayName, busy, onCreateDemo, onSubmit, onSignIn }) {
+function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, displayName, setDisplayName, busy, onCreateDemo, onSubmit, onSignIn, courses, selectedCourseIds, setSelectedCourseIds }) {
   return (
     <section className="auth-page">
       <div className="auth-intro"><span className="eyebrow">ACCOUNT SETUP</span><h2>Register your<br /><span>passkey</span></h2><p>Connect a passkey to your assigned classroom account. Your browser or device will guide you through a short confirmation.</p><div className="auth-support"><Icon name="user" size={20} /><span>Use only the account and one-time code issued to you.</span></div></div>
@@ -389,8 +406,9 @@ function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, disp
         <div className="form-card-heading"><span className="eyebrow">PASSKEY REGISTRATION</span><h3>Set up account access</h3><p>Use an issued code or create a fictional student demo account.</p></div>
         <label htmlFor="demo-name">Try the portal</label>
         <input id="demo-name" value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={60} autoComplete="name" placeholder="Your display name" />
-        <button className="button button-secondary button-block" type="button" onClick={onCreateDemo} disabled={busy || displayName.trim().length < 2}>{busy ? 'Preparing account...' : 'Create a student demo account'}</button>
-        <p className="form-help">This creates a fictional student account for your own passkey. Public signups cannot receive lecturer access.</p>
+        <fieldset className="course-choice-list"><legend>Choose your courses</legend>{courses.map(course => <label className="course-choice" key={course.id}><input type="checkbox" checked={selectedCourseIds.includes(course.id)} onChange={event => setSelectedCourseIds(current => event.target.checked ? [...current, course.id] : current.filter(id => id !== course.id))} /><span><b>{course.id}</b> — {course.title}</span></label>)}</fieldset>
+        <button className="button button-secondary button-block" type="button" onClick={onCreateDemo} disabled={busy || displayName.trim().length < 2 || selectedCourseIds.length === 0}>{busy ? 'Preparing account...' : 'Create my student account'}</button>
+        <p className="form-help">This creates your own fictional student account and enrolls it in the selected courses. Public signups cannot receive lecturer access.</p>
         <div className="form-divider"><span>Or use an issued code</span></div>
         <label htmlFor="enroll-account">Academic account</label>
         <select id="enroll-account" value={userId} onChange={event => setUserId(event.target.value)}><option value="S1">S1 - Student</option><option value="S2">S2 - Student</option><option value="L1">L1 - Lecturer</option>{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo student account</option>)}</select>
@@ -405,16 +423,18 @@ function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, disp
   );
 }
 
-function Dashboard({ user, records, roster, edit, setEdit, onSave, onOpenRecords, onSignIn }) {
+function Dashboard({ user, records, roster, edit, setEdit, onSave, onOpenRecords, onSignIn, courses: courseCatalog, selectedCourseId, setSelectedCourseId, onEnrollCourse }) {
   if (!user) return <SignedOutState title="Sign in to view your dashboard" onSignIn={onSignIn} />;
   if (user.role === 'lecturer') return <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={onSave} onSignIn={onSignIn} />;
   if (!records) return <LoadingState label="Loading your academic information..." />;
-  const courses = records.courses || [...new Set(records.grades.map(grade => grade.course))];
+  const enrolledCourses = records.courses || [...new Set(records.grades.map(grade => grade.course))];
+  const availableCourses = courseCatalog.filter(course => !enrolledCourses.includes(course.title));
   return (
     <section className="dashboard-page">
       <div className="welcome-heading"><div><span className="eyebrow">STUDENT DASHBOARD</span><h2>Welcome, <span>{user.displayName.split(' ')[0]}</span></h2><p>Your academic information is ready to view.</p></div><div className="student-id-card"><span className="avatar avatar-large">{initials(user.displayName)}</span><span><b>{records.profile.name}</b><small>Student ID: {records.profile.id}</small></span></div></div>
       <div className="section-header"><div><span className="eyebrow">YOUR STUDIES</span><h3>Enrolled courses</h3></div><button className="text-action" onClick={onOpenRecords}>View academic records <Icon name="arrow" size={15} /></button></div>
-      {courses.length ? <div className="course-grid">{courses.map(course => <article className="course-card" key={course}><span className="course-card-icon"><Icon name="course" size={20} /></span><div><span className="eyebrow">ENROLLED COURSE</span><h4>{course}</h4><p>Course information and assessment results</p></div><button className="icon-button" onClick={onOpenRecords} aria-label={`View records for ${course}`}><Icon name="arrow" size={17} /></button></article>)}</div> : <EmptyState title="No courses are listed yet" description="Your enrolled courses will appear here when they are available." />}
+      {enrolledCourses.length ? <div className="course-grid">{enrolledCourses.map(course => <article className="course-card" key={course}><span className="course-card-icon"><Icon name="course" size={20} /></span><div><span className="eyebrow">ENROLLED COURSE</span><h4>{course}</h4><p>Course information and assessment results</p></div><button className="icon-button" onClick={onOpenRecords} aria-label={`View records for ${course}`}><Icon name="arrow" size={17} /></button></article>)}</div> : <EmptyState title="No courses are listed yet" description="Your enrolled courses will appear here when they are available." />}
+      {availableCourses.length > 0 && <div className="course-enroll-panel"><div><span className="eyebrow">COURSE CATALOG</span><h3>Explore more courses</h3><p>Enroll in a course to add it to your academic profile.</p></div><div className="course-enroll-controls"><label htmlFor="course-catalog">Choose a course</label><select id="course-catalog" value={selectedCourseId} onChange={event => setSelectedCourseId(event.target.value)}><option value="">Select a course</option>{availableCourses.map(course => <option key={course.id} value={course.id}>{course.id} - {course.title}</option>)}</select><button className="button button-primary" type="button" disabled={!selectedCourseId} onClick={onEnrollCourse}>Enroll</button></div></div>}
       <div className="records-callout"><div><span className="eyebrow">ACADEMIC RECORDS</span><h3>Your grades and assessments</h3><p>Open your records to view assessment results for your courses.</p></div><button className="button button-primary" onClick={onOpenRecords}>View records <Icon name="arrow" size={16} /></button></div>
     </section>
   );
