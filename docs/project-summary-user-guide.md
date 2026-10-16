@@ -92,7 +92,7 @@ Sign in as a lecturer. In the course workspace, use **Create a course**, enter a
 
 ### Record a grade
 
-In the course workspace, select an enrolled student, enter an assessment name and a whole-number grade from 0 to 100, and save it. The server rejects requests if the lecturer is not assigned to that course or the student is not enrolled there.
+In the course workspace, select an enrolled student, enter an assessment name and a whole-number grade from 0 to 100, and save it. To edit an existing item, choose **Edit** in its roster row; the form loads that assessment so you can change its student, name, or grade. Choose **Delete** to remove one assessment record after confirming the prompt. The student account and course enrollment remain in place. The server rejects changes if the lecturer is not assigned to that course or the student is not enrolled there.
 
 ## Protected Academic Note demonstration
 

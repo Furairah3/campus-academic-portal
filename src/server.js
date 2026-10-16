@@ -468,6 +468,27 @@ app.put('/api/grades', authenticated, lecturer, csrf, async (req, res, next) => 
   }
 });
 
+app.delete('/api/grades', authenticated, lecturer, csrf, async (req, res, next) => {
+  try {
+    const studentId = String(req.body.studentId || '').trim().toUpperCase();
+    const courseId = String(req.body.courseId || '').trim().toUpperCase();
+    const assessment = String(req.body.assessment || '').trim();
+    if (!/^(?:S[0-9]+|D-[A-F0-9]{8})$/.test(studentId) || !/^[A-Z]{2,5}[0-9]{2,4}$/.test(courseId) || assessment.length < 1 || assessment.length > 60) {
+      return res.status(400).json({ error: 'Invalid student, course, or assessment details' });
+    }
+    const permitted = await db.get(
+      'SELECT 1 FROM course_lecturers cl JOIN enrolments e ON e.course_id=cl.course_id WHERE cl.course_id=? AND cl.lecturer_id=? AND e.student_id=?',
+      [courseId, req.user.id, studentId],
+    );
+    if (!permitted) return res.status(403).json({ error: 'You can only manage records for students in your assigned course' });
+    const removed = await db.run('DELETE FROM grades WHERE course_id=? AND student_id=? AND assessment=?', [courseId, studentId, assessment]);
+    if (!removed.changes) return res.status(404).json({ error: 'Assessment record not found' });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API route not found' }));
 if (!process.env.VERCEL) app.use(express.static(resolve(root, 'dist')));
 app.use((error, _req, res, _next) => {

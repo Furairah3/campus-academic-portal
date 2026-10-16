@@ -71,6 +71,7 @@ function App() {
   const [displayName, setDisplayName] = useState('');
   const [courseDraft, setCourseDraft] = useState({ id: '', title: '' });
   const [edit, setEdit] = useState({ studentId: 'S1', assessment: 'Security lab', grade: '' });
+  const [editingGrade, setEditingGrade] = useState(false);
 
   async function refreshCsrf() {
     const response = await fetch('/api/csrf', { credentials: 'include' });
@@ -358,8 +359,33 @@ function App() {
         method: 'PUT',
         body: JSON.stringify({ ...edit, studentId: roster.students.some(student => student.id === edit.studentId) ? edit.studentId : roster.students[0]?.id, courseId: roster.course.id, grade: Number(edit.grade) }),
       });
-      setNotice('Grade saved successfully.');
+      setNotice(editingGrade ? 'Grade record updated.' : 'Grade saved successfully.');
+      setEditingGrade(false);
       setRoster(await api('/api/lecturer/roster'));
+      setEdit({ studentId: roster.students[0]?.id || '', assessment: '', grade: '' });
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  function beginEditGrade(student) {
+    setEdit({ studentId: student.id, assessment: student.assessment, grade: String(student.grade) });
+    setEditingGrade(true);
+    setError('');
+    setNotice(`Editing ${student.assessment} for ${student.name}.`);
+  }
+
+  async function deleteGradeRecord(student) {
+    if (!window.confirm(`Delete the ${student.assessment} record for ${student.name}?`)) return;
+    clearMessages();
+    try {
+      await api('/api/grades', {
+        method: 'DELETE',
+        body: JSON.stringify({ studentId: student.id, courseId: roster.course.id, assessment: student.assessment }),
+      });
+      if (editingGrade && edit.studentId === student.id && edit.assessment === student.assessment) setEditingGrade(false);
+      setRoster(await api('/api/lecturer/roster'));
+      setNotice('Assessment record deleted.');
     } catch (requestError) {
       setError(requestError.message);
     }
@@ -431,9 +457,9 @@ function App() {
           {page === 'overview' && <Overview onSignIn={() => navigate('signin')} onRegister={() => navigate('enroll')} />}
           {page === 'signin' && <SignInForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} busy={busy} onSubmit={signIn} onRegister={() => navigate('enroll')} />}
           {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} lecturerInviteCode={lecturerInviteCode} setLecturerInviteCode={setLecturerInviteCode} onCreateLecturer={createLecturerAccount} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onSubmit={enroll} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseIds={selectedCourseIds} setSelectedCourseIds={setSelectedCourseIds} />}
-          {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onEnrollCourse={enrollInCourse} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
+          {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} editingGrade={editingGrade} setEditingGrade={setEditingGrade} onEditGrade={beginEditGrade} onDeleteGrade={deleteGradeRecord} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onEnrollCourse={enrollInCourse} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
           {page === 'records' && <StudentRecords user={user} records={records} onSignIn={() => navigate('signin')} />}
-          {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onSignIn={() => navigate('signin')} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
+          {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} editingGrade={editingGrade} setEditingGrade={setEditingGrade} onEditGrade={beginEditGrade} onDeleteGrade={deleteGradeRecord} onSave={saveGrade} onSignIn={() => navigate('signin')} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
           {page === 'note' && (isStudent
             ? <StudentCourseNotes user={user} courses={notesCourses} notes={courseNotes} draft={noteDraft} setDraft={setNoteDraft} editingNoteId={editingNoteId} setEditingNoteId={setEditingNoteId} onSave={saveCourseNote} onDelete={deleteCourseNote} onSignIn={() => navigate('signin')} />
             : <ProtectedNote user={user} payload={notePayload} recovered={noteRecovered} tamperDetected={tamperDetected} onEncrypt={encryptNote} onDecrypt={decryptNote} onTestIntegrity={testNoteIntegrity} onSignIn={() => navigate('signin')} />)}
@@ -525,9 +551,9 @@ function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, disp
   );
 }
 
-function Dashboard({ user, records, roster, edit, setEdit, onSave, onOpenRecords, onSignIn, courses: courseCatalog, selectedCourseId, setSelectedCourseId, onEnrollCourse, onCreateCourse, courseDraft, setCourseDraft }) {
+function Dashboard({ user, records, roster, edit, setEdit, editingGrade, setEditingGrade, onEditGrade, onDeleteGrade, onSave, onOpenRecords, onSignIn, courses: courseCatalog, selectedCourseId, setSelectedCourseId, onEnrollCourse, onCreateCourse, courseDraft, setCourseDraft }) {
   if (!user) return <SignedOutState title="Sign in to view your dashboard" onSignIn={onSignIn} />;
-  if (user.role === 'lecturer') return <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={onSave} onSignIn={onSignIn} onCreateCourse={onCreateCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />;
+  if (user.role === 'lecturer') return <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} editingGrade={editingGrade} setEditingGrade={setEditingGrade} onEditGrade={onEditGrade} onDeleteGrade={onDeleteGrade} onSave={onSave} onSignIn={onSignIn} onCreateCourse={onCreateCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />;
   if (!records) return <LoadingState label="Loading your academic information..." />;
   const enrolledCourses = records.courses || [...new Set(records.grades.map(grade => grade.course))];
   const availableCourses = courseCatalog.filter(course => !enrolledCourses.includes(course.title));
@@ -555,7 +581,7 @@ function StudentRecords({ user, records, onSignIn }) {
   );
 }
 
-function LecturerWorkspace({ user, roster, edit, setEdit, onSave, onSignIn, onOpen, onCreateCourse, courseDraft, setCourseDraft, compact = false }) {
+function LecturerWorkspace({ user, roster, edit, setEdit, editingGrade, setEditingGrade, onEditGrade, onDeleteGrade, onSave, onSignIn, onOpen, onCreateCourse, courseDraft, setCourseDraft, compact = false }) {
   if (!user) return <SignedOutState title="Sign in to open your course workspace" onSignIn={onSignIn} />;
   if (user.role !== 'lecturer') return <EmptyState title="Course workspace unavailable" description="This account does not have lecturer access." />;
   if (!roster) return <LoadingState label="Loading your assigned course..." />;
@@ -567,15 +593,16 @@ function LecturerWorkspace({ user, roster, edit, setEdit, onSave, onSignIn, onOp
       {!title ? <EmptyState title="No assigned course is available yet" description="You can create a course above; it will become your first teaching assignment." /> : <div className={`lecturer-layout ${compact ? 'lecturer-compact' : ''}`}>
         {compact && <div className="section-header"><div><span className="eyebrow">CLASS ROSTER</span><h3>Enrolled students</h3></div>{onOpen && <button className="text-action" onClick={onOpen}>Course workspace <Icon name="arrow" size={15} /></button>}</div>}
         <div className="table-card roster-card"><div className="table-card-heading"><div><span className="eyebrow">CLASS ROSTER</span><h3>Enrolled students</h3></div></div>
-          {roster.students.length ? <div className="table-scroll"><table><thead><tr><th>Student</th><th>Assessment</th><th>Grade</th></tr></thead><tbody>{roster.students.map((student, index) => <tr key={`${student.id}-${student.assessment}-${index}`}><td><span className="student-cell"><span className="avatar avatar-tiny">{initials(student.name)}</span><span><b>{student.name}</b><small>{student.id}</small></span></span></td><td>{student.assessment || 'No grade recorded'}</td><td>{student.grade === null ? <span className="grade-empty">Not recorded</span> : <><span className="grade-value">{student.grade}</span><span className="grade-out-of"> / 100</span></>}</td></tr>)}</tbody></table></div> : <EmptyState title="No students are enrolled" description="Enrolled students will appear here." />}
+          {roster.students.length ? <div className="table-scroll"><table><thead><tr><th>Student</th><th>Assessment</th><th>Grade</th><th>Manage</th></tr></thead><tbody>{roster.students.map((student, index) => <tr key={`${student.id}-${student.assessment}-${index}`}><td><span className="student-cell"><span className="avatar avatar-tiny">{initials(student.name)}</span><span><b>{student.name}</b><small>{student.id}</small></span></span></td><td>{student.assessment || 'No grade recorded'}</td><td>{student.grade === null ? <span className="grade-empty">Not recorded</span> : <><span className="grade-value">{student.grade}</span><span className="grade-out-of"> / 100</span></>}</td><td>{student.assessment ? <div className="record-actions"><button type="button" className="text-action" onClick={() => onEditGrade(student)}>Edit</button><button type="button" className="text-action record-delete" onClick={() => onDeleteGrade(student)}>Delete</button></div> : <span className="grade-empty">—</span>}</td></tr>)}</tbody></table></div> : <EmptyState title="No students are enrolled" description="Enrolled students will appear here." />}
           <div className="table-footnote">This roster is limited to your assigned course.</div>
         </div>
         {!compact && <form className="grade-form" onSubmit={onSave}>
-          <span className="eyebrow">ASSESSMENT MANAGEMENT</span><h3>Update a grade</h3><p>Changes are saved to this course record.</p>
+          <span className="eyebrow">ASSESSMENT MANAGEMENT</span><h3>{editingGrade ? 'Edit a grade record' : 'Add or update a grade'}</h3><p>{editingGrade ? 'Update the selected student assessment.' : 'Choose a student and assessment. Saving the same assessment updates its existing record.'}</p>
           <label htmlFor="grade-student">Student</label><select id="grade-student" value={roster.students.some(student => student.id === edit.studentId) ? edit.studentId : roster.students[0]?.id || ''} onChange={event => setEdit({ ...edit, studentId: event.target.value })} required disabled={!roster.students.length}>{[...new Map(roster.students.map(student => [student.id, student])).values()].map(student => <option key={student.id} value={student.id}>{student.id} - {student.name}</option>)}</select>
           <label htmlFor="grade-assessment">Assessment</label><input id="grade-assessment" value={edit.assessment} onChange={event => setEdit({ ...edit, assessment: event.target.value })} required maxLength={60} />
           <label htmlFor="grade-score">Grade <span className="label-hint">0 to 100</span></label><input id="grade-score" type="number" min="0" max="100" step="1" value={edit.grade} onChange={event => setEdit({ ...edit, grade: event.target.value })} required />
-          <button className="button button-primary button-block">Save grade <Icon name="arrow" size={16} /></button>
+          <button className="button button-primary button-block">{editingGrade ? 'Save changes' : 'Save grade'} <Icon name="arrow" size={16} /></button>
+          {editingGrade && <button className="text-action grade-cancel" type="button" onClick={() => { setEditingGrade(false); setEdit({ studentId: roster.students[0]?.id || '', assessment: '', grade: '' }); }}>Cancel editing</button>}
           <p className="form-help">Only this assigned course can be updated.</p>
         </form>}
       </div>}

@@ -193,6 +193,7 @@ td b { color: #263750; font-weight: 650; }
 .lecturer-layout { display: grid; grid-template-columns: minmax(0,1.55fr) minmax(275px,.72fr); gap: 15px; align-items: start; }
 .lecturer-compact { display: block; }.lecturer-compact .roster-card { width: 100%; }
 .lecturer-page > .section-header { margin-top: 25px; }
+.record-actions { display: flex; gap: 10px; white-space: nowrap; }.record-actions .text-action { font-size: 11px; }.record-actions .record-delete { color: var(--danger); }.grade-cancel { display: block; margin: 12px auto 0; }
 .grade-form { padding: 20px; border: 1px solid var(--border); border-radius: 13px; background: #fff; box-shadow: 0 4px 15px rgba(23,32,51,.025); }
 .grade-form h3 { margin: 6px 0 5px; color: var(--ink); font-size: 18px; }.grade-form > p { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .label-hint { float: right; color: var(--muted); font-size: 11px; font-weight: 450; }

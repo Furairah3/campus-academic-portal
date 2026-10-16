@@ -94,6 +94,7 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   assert.equal((await fetch(`${base}/api/records/me`)).status, 401);
   assert.equal((await fetch(`${base}/api/records/students/S2`)).status, 401);
   assert.equal((await fetch(`${base}/api/grades`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
+  assert.equal((await fetch(`${base}/api/grades`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
   assert.equal((await fetch(`${base}/api/logout`, { method: 'POST' })).status, 401);
   assert.equal((await fetch(`${base}/api/crypto/demo/encrypt`, { method: 'POST' })).status, 401);
   assert.equal((await fetch(`${base}/api/crypto/demo`)).status, 401);
@@ -127,6 +128,22 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
     body: JSON.stringify({ userId: lecturerAccount.userId, code: lecturerAccount.code }),
   });
   assert.equal(lecturerOptions.status, 200, 'new lecturer account receives valid passkey registration options');
+  testDb = createClient({ url: pathToFileURL(dbPath).href });
+  const lecturerSessionId = randomBytes(18).toString('base64url');
+  const lecturerCsrf = randomBytes(24).toString('base64url');
+  const signedLecturerSession = `s:${lecturerSessionId}.${createHmac('sha256', sessionSecret).update(lecturerSessionId).digest('base64').replace(/=+$/, '')}`;
+  await testDb.execute({ sql: 'INSERT INTO sessions(sid,data,expires_at) VALUES(?,?,?)', args: [lecturerSessionId, JSON.stringify({ cookie: { originalMaxAge: 28800000, httpOnly: true, path: '/', sameSite: 'lax' }, userId: lecturerAccount.userId, csrfToken: lecturerCsrf }), Date.now() + 3600000] });
+  await testDb.close();
+  testDb = null;
+  const lecturerHeaders = { Origin: base, Cookie: `campus.sid=${signedLecturerSession}`, 'X-CSRF-Token': lecturerCsrf, 'Content-Type': 'application/json' };
+  const studentGradeDelete = await fetch(`${base}/api/grades`, { method: 'DELETE', headers: { ...studentHeaders }, body: JSON.stringify({ studentId: 'S3', courseId: 'CS230', assessment: 'OS concepts' }) });
+  assert.equal(studentGradeDelete.status, 403, 'student accounts cannot delete assessment records');
+  const unassignedGradeDelete = await fetch(`${base}/api/grades`, { method: 'DELETE', headers: lecturerHeaders, body: JSON.stringify({ studentId: 'S3', courseId: 'IS451', assessment: 'Threat model' }) });
+  assert.equal(unassignedGradeDelete.status, 403, 'lecturers cannot delete records in unassigned courses');
+  const assignedGradeDelete = await fetch(`${base}/api/grades`, { method: 'DELETE', headers: lecturerHeaders, body: JSON.stringify({ studentId: 'S3', courseId: 'CS230', assessment: 'OS concepts' }) });
+  assert.equal(assignedGradeDelete.status, 200, 'lecturers can delete a record in their assigned course');
+  const missingGradeDelete = await fetch(`${base}/api/grades`, { method: 'DELETE', headers: lecturerHeaders, body: JSON.stringify({ studentId: 'S3', courseId: 'CS230', assessment: 'OS concepts' }) });
+  assert.equal(missingGradeDelete.status, 404, 'deleting an absent assessment returns not found');
   const reusedInvite = await fetch(`${base}/api/enrol/options`, {
     method: 'POST', headers: { Origin: base, Cookie: cookie, 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
     body: JSON.stringify({ createLecturerAccount: true, displayName: 'Second Lecturer', inviteCode: lecturerInviteCode, courseId: 'CS230' }),
