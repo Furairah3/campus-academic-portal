@@ -22,13 +22,16 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   const dbPath = join(tmpdir(), `is451-api-${randomBytes(8).toString('hex')}.db`);
   const base = `http://localhost:${port}`;
   const lecturerInviteCode = randomBytes(24).toString('base64url');
-  const child = spawn(process.execPath, ['src/server.js'], {
+  const serverEnv = { ...process.env, PORT: String(port), DATABASE_PATH: dbPath, ORIGIN: base, LECTURER_INVITE_CODE: lecturerInviteCode };
+  let child = spawn(process.execPath, ['src/server.js'], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: String(port), DATABASE_PATH: dbPath, ORIGIN: base, LECTURER_INVITE_CODE: lecturerInviteCode },
+    env: serverEnv,
     stdio: 'ignore',
   });
+  let restartedChild;
   t.after(async () => {
     child.kill();
+    restartedChild?.kill();
     await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(1500)]);
     for (const suffix of ['', '-shm', '-wal']) rmSync(dbPath + suffix, { force: true });
   });
@@ -55,7 +58,7 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   assert.ok(cookie, 'session cookie is issued for CSRF state');
   const demoAccountResponse = await fetch(`${base}/api/enrol/options`, {
     method: 'POST', headers: { Origin: base, Cookie: cookie, 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ createDemoAccount: true, displayName: 'Guest Tester' }),
+    body: JSON.stringify({ createDemoAccount: true, displayName: 'Guest Tester', courseIds: ['CS230'] }),
   });
   assert.equal(demoAccountResponse.status, 201);
   const { demoAccount } = await demoAccountResponse.json();
@@ -104,4 +107,15 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   });
   assert.equal(wrongOrigin.status, 403);
   assert.equal((await fetch(`${base}/api/users/S1/role`, { method: 'PUT' })).status, 404);
+
+  child.kill();
+  await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(1500)]);
+  restartedChild = spawn(process.execPath, ['src/server.js'], { cwd: process.cwd(), env: serverEnv, stdio: 'ignore' });
+  let restartedHealth;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (restartedChild.exitCode !== null) break;
+    try { restartedHealth = await fetch(`${base}/api/health`); if (restartedHealth.ok) break; } catch { /* server is starting */ }
+    await pause(100);
+  }
+  assert.equal(restartedHealth?.status, 200, 'restart safely seeds existing demo accounts enrolled outside IS451');
 });

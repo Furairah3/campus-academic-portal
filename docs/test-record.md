@@ -12,8 +12,8 @@ Environment inspected: Node.js v24.11.1; npm v11.12.1. These are the checks run 
 | Unauthenticated record request | Passed | `GET /api/records/me` returned 401 |
 | Invalid enrollment code | Passed | `POST /api/enrol/options` with an invalid code returned 400 |
 | `node --check src/server.js` | Passed | Syntax check only |
-| `npm test` | Passed, 7/7 | Includes lecturer invitation registration, one-time invite rejection, unauthenticated course-creation rejection, ownership/lecturer policy, grade validation, and AES-GCM paths |
-| API negative-path integration | Passed | Temporary isolated SQLite DB; unauthenticated records/grade/logout/course creation denied, invalid enrollment rejected, wrong Origin rejected, role-change path absent |
+| `npm test` | Passed, 7/7 | Includes lecturer invitation registration, one-time invite rejection, unauthenticated course-creation rejection, restart with a demo student enrolled outside IS451, ownership/lecturer policy, grade validation, and AES-GCM paths |
+| API integration | Passed | Temporary SQLite DB; verifies the server restarts after a CS230-only demo account exists, avoiding the production foreign-key failure |
 | Course creation API | Partially verified | Unauthenticated requests are rejected; successful creation requires a real authenticated lecturer session and has not been exercised through a browser passkey session |
 | T1 browser passkey registration/login | Not run | Requires browser/device interaction with an issued enrollment code |
 | T2–T5 authenticated ownership/grade flows | Not run | Requires actual student and lecturer passkeys; automated helper checks passed |
