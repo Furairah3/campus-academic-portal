@@ -20,11 +20,12 @@ function decodePayload(payload) {
   return decoded;
 }
 
-export function encryptDemoNote(key) {
+export function encryptDemoNote(key, note = DEMO_NOTE) {
   assertKey(key);
+  if (typeof note !== 'string' || note.length < 1 || note.length > 10150) throw new Error('Enter a note of up to 10,150 characters');
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const ciphertext = Buffer.concat([cipher.update(DEMO_NOTE, 'utf8'), cipher.final()]);
+  const ciphertext = Buffer.concat([cipher.update(note, 'utf8'), cipher.final()]);
   return { ciphertext: ciphertext.toString('base64'), iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64') };
 }
 

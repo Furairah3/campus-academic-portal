@@ -15,7 +15,7 @@ The project chose passkeys instead of passwords, server-side authorization inste
 - Students register a passkey, view their own profile, course enrollments, and grades, and enroll in available courses.
 - Lecturers register with a single-use invitation, receive an assigned course, view its enrolled student roster, record grades, and create additional courses.
 - Students can create, view, edit, and delete their own notes for courses they are enrolled in. Lecturers can create, view, edit, and delete their own teaching notes for courses assigned to them.
-- Student and lecturer course note titles and bodies are encrypted in the database with AES-256-GCM. The server decrypts them after checking the signed-in account and course permissions. The separate Protected Academic Note page demonstrates AES-GCM encryption and tamper detection on a fixed sample note. Grades are not encrypted by this feature.
+- Student and lecturer course note titles and bodies are encrypted in the database with AES-256-GCM. The server decrypts them after checking the signed-in account and course permissions. The Encryption demo lets a signed-in user select a saved course note, make an AES-GCM encrypted copy, decrypt it, and check tamper detection. Grades are not encrypted by this feature.
 
 ## Technology and architecture
 
@@ -100,9 +100,9 @@ In the course workspace, select an enrolled student, enter an assessment name an
 
 Sign in as a lecturer and open **Course notes**. Choose a course assigned to your account, write a teaching note, and save it. You can edit or delete your own notes. The server blocks note access for courses that are not assigned to you. Note text is encrypted in the database and decrypted for the owning lecturer after authorization.
 
-## Protected Academic Note demonstration
+## Encryption demo
 
-The Protected Academic Note page encrypts a fixed sample with AES-256-GCM, returns ciphertext/nonce/authentication tag, decrypts it, and demonstrates that tampering is rejected. This demonstration is separate from persisted course notes, which use the `NOTES_ENCRYPTION_KEY` environment secret.
+The Encryption demo takes a saved note owned by the signed-in student or lecturer, encrypts a demonstration copy with AES-256-GCM, returns ciphertext/nonce/authentication tag, decrypts it, and demonstrates that tampering is rejected. It does not modify the saved record. Persisted course notes are already encrypted at rest using the separate `NOTES_ENCRYPTION_KEY` environment secret.
 
 ## Course creation and lecturer signup status
 

@@ -280,15 +280,19 @@ function App() {
     }
   }
 
-  async function encryptNote() {
+  async function encryptNote(note) {
     clearMessages();
     setNotePayload(null);
     setNoteRecovered('');
     setTamperDetected(null);
+    if (!note) {
+      setError('Create or save a course note first, then choose it here to encrypt it.');
+      return;
+    }
     try {
-      const payload = await api('/api/crypto/demo/encrypt', { method: 'POST', body: '{}' });
+      const payload = await api('/api/crypto/demo/encrypt', { method: 'POST', body: JSON.stringify({ title: note.title, body: note.body }) });
       setNotePayload(payload);
-      setNotice('Your sample note has been encrypted.');
+      setNotice('Your selected course note has been encrypted for the demonstration.');
     } catch (requestError) {
       setError(requestError.message);
     }
@@ -468,7 +472,7 @@ function App() {
           {page === 'records' && <StudentRecords user={user} records={records} onSignIn={() => navigate('signin')} />}
           {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} editingGrade={editingGrade} setEditingGrade={setEditingGrade} onEditGrade={beginEditGrade} onDeleteGrade={deleteGradeRecord} onSave={saveGrade} onSignIn={() => navigate('signin')} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
           {page === 'note' && <CourseNotesWorkspace user={user} courses={notesCourses} notes={courseNotes} draft={noteDraft} setDraft={setNoteDraft} editingNoteId={editingNoteId} setEditingNoteId={setEditingNoteId} onSave={saveCourseNote} onDelete={deleteCourseNote} onSignIn={() => navigate('signin')} />}
-          {page === 'crypto' && <ProtectedNote user={user} payload={notePayload} recovered={noteRecovered} tamperDetected={tamperDetected} onEncrypt={encryptNote} onDecrypt={decryptNote} onTestIntegrity={testNoteIntegrity} onSignIn={() => navigate('signin')} />}
+          {page === 'crypto' && <ProtectedNote user={user} notes={courseNotes} payload={notePayload} recovered={noteRecovered} tamperDetected={tamperDetected} onEncrypt={encryptNote} onDecrypt={decryptNote} onTestIntegrity={testNoteIntegrity} onSignIn={() => navigate('signin')} onGoToNotes={() => navigate('note')} />}
         </main>
 
         <footer className="page-footer"><span>Campus Academic Portal</span><span>Fictional academic records for classroom use</span></footer>
@@ -652,13 +656,20 @@ function CourseNotesWorkspace({ user, courses, notes, draft, setDraft, editingNo
   );
 }
 
-function ProtectedNote({ user, payload, recovered, tamperDetected, onEncrypt, onDecrypt, onTestIntegrity, onSignIn }) {
+function ProtectedNote({ user, notes, payload, recovered, tamperDetected, onEncrypt, onDecrypt, onTestIntegrity, onSignIn, onGoToNotes }) {
+  const [selectedNoteId, setSelectedNoteId] = useState('');
+  const selectedNote = notes.find(note => String(note.id) === selectedNoteId) || notes[0];
+  useEffect(() => {
+    if (!notes.some(note => String(note.id) === selectedNoteId)) setSelectedNoteId(notes[0] ? String(notes[0].id) : '');
+  }, [notes, selectedNoteId]);
   if (!user) return <SignedOutState title="Sign in to open the protected note" onSignIn={onSignIn} />;
   return (
     <section className="note-page">
-      <div className="note-intro"><span className="eyebrow">ACADEMIC NOTE PROTECTION</span><h2>Protected academic note</h2><p>This short demonstration encrypts a sample note and checks whether a changed copy is rejected. Student grades are stored separately and are not encrypted by this demonstration.</p></div>
+      <div className="note-intro"><span className="eyebrow">ACADEMIC NOTE PROTECTION</span><h2>Encrypt one of your notes</h2><p>Select a saved course note. The demo encrypts its actual title and text, then lets you decrypt it and test whether tampering is detected. Your saved note itself is already encrypted at rest.</p></div>
       <div className="note-layout">
-        <article className="note-card"><span className="eyebrow">SAMPLE NOTE</span><div className="sample-note"><span className="note-icon"><Icon name="note" size={20} /></span><p>Student consultation note {String.fromCharCode(8211)} demonstration data only</p></div><button className="button button-primary" onClick={onEncrypt}>Encrypt note <Icon name="arrow" size={16} /></button></article>
+        <article className="note-card"><span className="eyebrow">YOUR SAVED NOTE</span>
+          {notes.length ? <><label htmlFor="demo-note-select">Choose a course note</label><select id="demo-note-select" value={String(selectedNote?.id || '')} onChange={event => setSelectedNoteId(event.target.value)}>{notes.map(note => <option key={note.id} value={note.id}>{note.courseId} · {note.title}</option>)}</select><div className="sample-note"><span className="note-icon"><Icon name="note" size={20} /></span><div><b>{selectedNote.title}</b><p>{selectedNote.body}</p></div></div><button className="button button-primary" onClick={() => onEncrypt(selectedNote)}>Encrypt this note <Icon name="arrow" size={16} /></button></> : <><div className="note-empty"><b>No saved course notes</b><span>Create a note first, then return here to encrypt it.</span></div><button className="button button-primary" onClick={onGoToNotes}>Go to course notes <Icon name="arrow" size={16} /></button></>}
+        </article>
         <article className="note-card note-output"><div className="note-card-title"><div><span className="eyebrow">ENCRYPTED DATA</span><h3>Encrypted note details</h3></div>{payload && <span className="status-badge">Encrypted</span>}</div>
           {payload ? <><div className="data-field"><span>Ciphertext</span><code>{payload.ciphertext}</code></div><div className="data-field"><span>Nonce</span><code>{payload.iv}</code></div><div className="data-field"><span>Authentication tag</span><code>{payload.tag}</code></div><div className="note-actions"><button className="button button-primary" onClick={onDecrypt}>Decrypt note</button><button className="button button-secondary" onClick={onTestIntegrity}>Test integrity protection</button></div>
             {recovered && <div className="result-box result-success" role="status"><b>Decryption succeeded</b><span>{recovered}</span></div>}
@@ -666,7 +677,7 @@ function ProtectedNote({ user, payload, recovered, tamperDetected, onEncrypt, on
           </> : <div className="note-empty"><span className="note-empty-icon"><Icon name="records" size={22} /></span><b>No encrypted note yet</b><span>Choose Encrypt note to create a sample.</span></div>}
         </article>
       </div>
-      <details className="note-explanation"><summary>How note protection works</summary><p>A fresh 96-bit nonce is generated for each encryption. AES-GCM uses an authentication tag to detect changes to the ciphertext. The key stays on the server; this example does not encrypt the grades in the academic records.</p></details>
+      <details className="note-explanation"><summary>How note protection works</summary><p>A fresh 96-bit nonce is generated for each encryption. AES-GCM uses an authentication tag to detect changes to the ciphertext. This demo creates an encrypted copy of your selected note; it does not change the saved note or encrypt grades.</p></details>
     </section>
   );
 }

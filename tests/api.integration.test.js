@@ -90,6 +90,15 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   const decryptedStudentNote = await fetch(`${base}/api/course-notes`, { headers: { Cookie: `campus.sid=${signedStudentSession}` } }).then(response => response.json());
   assert.equal(decryptedStudentNote.notes[0].title, 'Week one revised', 'the owner receives decrypted note content after authentication');
   assert.equal(decryptedStudentNote.notes[0].body, 'Review confidentiality, integrity, and availability.');
+  const noteForCryptoDemo = await fetch(`${base}/api/crypto/demo/encrypt`, { method: 'POST', headers: studentHeaders, body: JSON.stringify({ title: 'Week one revised', body: 'Review confidentiality, integrity, and availability.' }) });
+  assert.equal(noteForCryptoDemo.status, 200, 'the encryption demo accepts a real saved-note selection from an authenticated user');
+  const encryptedForDemo = await noteForCryptoDemo.json();
+  assert.equal(encryptedForDemo.title, 'Week one revised');
+  assert.ok(encryptedForDemo.ciphertext && encryptedForDemo.iv && encryptedForDemo.tag);
+  const decryptedFromDemo = await fetch(`${base}/api/crypto/demo/decrypt`, { method: 'POST', headers: studentHeaders, body: JSON.stringify(encryptedForDemo) });
+  assert.equal((await decryptedFromDemo.json()).recovered, 'Week one revised\n\nReview confidentiality, integrity, and availability.');
+  const emptyDemoNote = await fetch(`${base}/api/crypto/demo/encrypt`, { method: 'POST', headers: studentHeaders, body: JSON.stringify({}) });
+  assert.equal(emptyDemoNote.status, 400, 'the encryption demo rejects a missing note instead of encrypting a hard-coded sample');
   const otherSessionId = randomBytes(18).toString('base64url');
   const otherSignedSession = `s:${otherSessionId}.${createHmac('sha256', sessionSecret).update(otherSessionId).digest('base64').replace(/=+$/, '')}`;
   await testDb.execute({ sql: 'INSERT INTO sessions(sid,data,expires_at) VALUES(?,?,?)', args: [otherSessionId, JSON.stringify({ cookie: { originalMaxAge: 28800000, httpOnly: true, path: '/', sameSite: 'lax' }, userId: 'S2', csrfToken: studentCsrf }), Date.now() + 3600000] });

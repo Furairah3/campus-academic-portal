@@ -4,7 +4,7 @@ import session from 'express-session';
 import { createHash, randomBytes } from 'node:crypto';
 import { db, initializeDatabase, seedDemoData, migrateLegacyCourseNotes } from './db.js';
 import { canReadStudent, canEditGrade, isValidGradeChange } from './policy.js';
-import { runAesDemo, encryptDemoNote, decryptDemoNote, testDemoTampering } from './cryptoDemo.js';
+import { encryptDemoNote, decryptDemoNote, testDemoTampering } from './cryptoDemo.js';
 import { decryptCourseNote, encryptCourseNote } from './courseNotesCrypto.js';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { resolve, dirname } from 'node:path';
@@ -456,7 +456,17 @@ app.get('/api/lecturer/roster', authenticated, lecturer, async (req, res, next) 
   }
 });
 
-app.post('/api/crypto/demo/encrypt', authenticated, csrf, (_req, res) => res.json(encryptDemoNote(aesKey)));
+app.post('/api/crypto/demo/encrypt', authenticated, csrf, (req, res) => {
+  const title = String(req.body.title || '').trim();
+  const body = String(req.body.body || '').trim();
+  if (!title || title.length > 100 || !body || body.length > 10000) return res.status(400).json({ error: 'Choose a saved note with a title and note text to encrypt.' });
+  const note = `${title}\n\n${body}`;
+  try {
+    res.json({ title, body, ...encryptDemoNote(aesKey, note) });
+  } catch {
+    res.status(400).json({ error: 'The selected note could not be encrypted.' });
+  }
+});
 app.post('/api/crypto/demo/decrypt', authenticated, csrf, (req, res) => {
   try {
     res.json({ recovered: decryptDemoNote(aesKey, req.body) });
@@ -471,7 +481,7 @@ app.post('/api/crypto/demo/tamper', authenticated, csrf, (req, res) => {
     res.status(400).json({ error: 'The note could not be checked.' });
   }
 });
-app.get('/api/crypto/demo', authenticated, (_req, res) => res.json(runAesDemo(aesKey)));
+app.get('/api/crypto/demo', authenticated, (_req, res) => res.json({ requiresSavedNote: true }));
 
 app.put('/api/grades', authenticated, lecturer, csrf, async (req, res, next) => {
   try {
