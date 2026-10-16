@@ -39,9 +39,23 @@ CREATE TABLE IF NOT EXISTS course_notes (
   student_id TEXT NOT NULL,
   title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 100),
   body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 10000),
+  ciphertext TEXT,
+  iv TEXT,
+  tag TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY(course_id, student_id) REFERENCES enrolments(course_id, student_id)
+);
+CREATE TABLE IF NOT EXISTS lecturer_course_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id TEXT NOT NULL REFERENCES courses(id),
+  lecturer_id TEXT NOT NULL REFERENCES users(id),
+  ciphertext TEXT NOT NULL,
+  iv TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY(course_id, lecturer_id) REFERENCES course_lecturers(course_id, lecturer_id)
 );
 CREATE TABLE IF NOT EXISTS credentials (
   id TEXT PRIMARY KEY,

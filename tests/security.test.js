@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { canReadStudent, canEditGrade, isValidGradeChange } from '../src/policy.js';
 import { DEMO_NOTE, encryptDemoNote, decryptDemoNote, testDemoTampering, runAesDemo } from '../src/cryptoDemo.js';
 import { randomBytes } from 'node:crypto';
+import { encryptCourseNote, decryptCourseNote } from '../src/courseNotesCrypto.js';
 
 test('students can read only their own record', () => {
   assert.equal(canReadStudent({ role: 'student', userId: 'S1', targetId: 'S1' }), true);
@@ -45,4 +46,15 @@ test('academic note encrypt and decrypt endpoints use separate operations', () =
 
 test('AES demo rejects a key of the wrong size', () => {
   assert.throws(() => runAesDemo(randomBytes(16)), /32-byte key/);
+});
+
+test('persisted course notes encrypt, decrypt, and reject tampering', () => {
+  const key = randomBytes(32);
+  const original = { title: 'Lecture summary', body: 'Private course note text.' };
+  const encrypted = encryptCourseNote(key, original);
+  assert.notEqual(encrypted.ciphertext, Buffer.from(JSON.stringify(original)).toString('base64'));
+  assert.deepEqual(decryptCourseNote(key, encrypted), original);
+  const altered = { ...encrypted, ciphertext: Buffer.from(encrypted.ciphertext, 'base64').map((byte, index) => index === 0 ? byte ^ 1 : byte).toString('base64') };
+  assert.throws(() => decryptCourseNote(key, altered));
+  assert.throws(() => decryptCourseNote(randomBytes(32), encrypted));
 });

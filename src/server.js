@@ -2,15 +2,24 @@ import 'dotenv/config';
 import express from 'express';
 import session from 'express-session';
 import { createHash, randomBytes } from 'node:crypto';
-import { db, initializeDatabase, seedDemoData } from './db.js';
+import { db, initializeDatabase, seedDemoData, migrateLegacyCourseNotes } from './db.js';
 import { canReadStudent, canEditGrade, isValidGradeChange } from './policy.js';
 import { runAesDemo, encryptDemoNote, decryptDemoNote, testDemoTampering } from './cryptoDemo.js';
+import { decryptCourseNote, encryptCourseNote } from './courseNotesCrypto.js';
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const notesKeyText = process.env.NOTES_ENCRYPTION_KEY?.trim();
+if (!notesKeyText) throw new Error('NOTES_ENCRYPTION_KEY is required to protect saved course notes');
+const notesEncryptionKey = Buffer.from(notesKeyText, 'base64');
+if (notesEncryptionKey.length !== 32 || notesEncryptionKey.toString('base64') !== notesKeyText) {
+  throw new Error('NOTES_ENCRYPTION_KEY must be base64 for exactly 32 random bytes');
+}
+
 await initializeDatabase();
 await seedDemoData();
+await migrateLegacyCourseNotes(notesEncryptionKey);
 if (process.env.LECTURER_INVITE_CODE?.trim()) {
   const inviteCode = process.env.LECTURER_INVITE_CODE.trim();
   const tokenHash = createHash('sha256').update(inviteCode).digest('hex');
@@ -342,9 +351,16 @@ app.get('/api/records/me', authenticated, async (req, res, next) => {
 
 app.get('/api/course-notes', authenticated, async (req, res, next) => {
   try {
-    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
-    const courses = await db.all('SELECT c.id,c.title FROM enrolments e JOIN courses c ON c.id=e.course_id WHERE e.student_id=? ORDER BY c.id', [req.user.id]);
-    const notes = await db.all('SELECT n.id,n.course_id AS courseId,c.title AS courseTitle,n.title,n.body,n.created_at AS createdAt,n.updated_at AS updatedAt FROM course_notes n JOIN courses c ON c.id=n.course_id WHERE n.student_id=? ORDER BY n.updated_at DESC,n.id DESC', [req.user.id]);
+    let courses;
+    let rows;
+    if (req.user.role === 'student') {
+      courses = await db.all('SELECT c.id,c.title FROM enrolments e JOIN courses c ON c.id=e.course_id WHERE e.student_id=? ORDER BY c.id', [req.user.id]);
+      rows = await db.all('SELECT n.id,n.course_id AS courseId,c.title AS courseTitle,n.ciphertext,n.iv,n.tag,n.created_at AS createdAt,n.updated_at AS updatedAt FROM course_notes n JOIN courses c ON c.id=n.course_id WHERE n.student_id=? ORDER BY n.updated_at DESC,n.id DESC', [req.user.id]);
+    } else if (req.user.role === 'lecturer') {
+      courses = await db.all('SELECT c.id,c.title FROM course_lecturers cl JOIN courses c ON c.id=cl.course_id WHERE cl.lecturer_id=? ORDER BY c.id', [req.user.id]);
+      rows = await db.all('SELECT n.id,n.course_id AS courseId,c.title AS courseTitle,n.ciphertext,n.iv,n.tag,n.created_at AS createdAt,n.updated_at AS updatedAt FROM lecturer_course_notes n JOIN courses c ON c.id=n.course_id WHERE n.lecturer_id=? ORDER BY n.updated_at DESC,n.id DESC', [req.user.id]);
+    } else return res.status(403).json({ error: 'Course notes are unavailable to this account' });
+    const notes = rows.map(row => ({ ...row, id: Number(row.id), ...decryptCourseNote(notesEncryptionKey, row) }));
     res.json({ courses, notes });
   } catch (error) {
     next(error);
@@ -353,17 +369,22 @@ app.get('/api/course-notes', authenticated, async (req, res, next) => {
 
 app.post('/api/course-notes', authenticated, csrf, async (req, res, next) => {
   try {
-    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
+    if (!['student', 'lecturer'].includes(req.user.role)) return res.status(403).json({ error: 'Course notes are unavailable to this account' });
     const courseId = String(req.body.courseId || '').trim().toUpperCase();
     const title = String(req.body.title || '').trim().replace(/\s+/g, ' ');
     const body = String(req.body.body || '').trim();
     if (!/^[A-Z]{2,5}[0-9]{2,4}$/.test(courseId) || title.length < 1 || title.length > 100 || body.length < 1 || body.length > 10000) {
       return res.status(400).json({ error: 'Choose an enrolled course and enter a title and note (up to 10,000 characters)' });
     }
-    const enrolled = await db.get('SELECT 1 FROM enrolments WHERE course_id=? AND student_id=?', [courseId, req.user.id]);
-    if (!enrolled) return res.status(403).json({ error: 'You can only add notes to courses you are enrolled in' });
+    const permitted = req.user.role === 'student'
+      ? await db.get('SELECT 1 FROM enrolments WHERE course_id=? AND student_id=?', [courseId, req.user.id])
+      : await db.get('SELECT 1 FROM course_lecturers WHERE course_id=? AND lecturer_id=?', [courseId, req.user.id]);
+    if (!permitted) return res.status(403).json({ error: req.user.role === 'student' ? 'You can only add notes to courses you are enrolled in' : 'You can only add notes to courses assigned to you' });
     const now = Date.now();
-    const result = await db.run('INSERT INTO course_notes(course_id,student_id,title,body,created_at,updated_at) VALUES(?,?,?,?,?,?)', [courseId, req.user.id, title, body, now, now]);
+    const encrypted = encryptCourseNote(notesEncryptionKey, { title, body });
+    const result = req.user.role === 'student'
+      ? await db.run("INSERT INTO course_notes(course_id,student_id,title,body,ciphertext,iv,tag,created_at,updated_at) VALUES(?,?,'Encrypted','Encrypted',?,?,?,?,?)", [courseId, req.user.id, encrypted.ciphertext, encrypted.iv, encrypted.tag, now, now])
+      : await db.run('INSERT INTO lecturer_course_notes(course_id,lecturer_id,ciphertext,iv,tag,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', [courseId, req.user.id, encrypted.ciphertext, encrypted.iv, encrypted.tag, now, now]);
     res.status(201).json({ id: Number(result.lastInsertRowid), courseId, title, body, createdAt: now, updatedAt: now });
   } catch (error) {
     next(error);
@@ -372,7 +393,7 @@ app.post('/api/course-notes', authenticated, csrf, async (req, res, next) => {
 
 app.put('/api/course-notes/:id', authenticated, csrf, async (req, res, next) => {
   try {
-    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
+    if (!['student', 'lecturer'].includes(req.user.role)) return res.status(403).json({ error: 'Course notes are unavailable to this account' });
     const noteId = Number(req.params.id);
     const title = String(req.body.title || '').trim().replace(/\s+/g, ' ');
     const body = String(req.body.body || '').trim();
@@ -380,7 +401,10 @@ app.put('/api/course-notes/:id', authenticated, csrf, async (req, res, next) => 
       return res.status(400).json({ error: 'Enter a title and note of up to 10,000 characters' });
     }
     const now = Date.now();
-    const updated = await db.run('UPDATE course_notes SET title=?,body=?,updated_at=? WHERE id=? AND student_id=?', [title, body, now, noteId, req.user.id]);
+    const encrypted = encryptCourseNote(notesEncryptionKey, { title, body });
+    const updated = req.user.role === 'student'
+      ? await db.run("UPDATE course_notes SET title='Encrypted',body='Encrypted',ciphertext=?,iv=?,tag=?,updated_at=? WHERE id=? AND student_id=?", [encrypted.ciphertext, encrypted.iv, encrypted.tag, now, noteId, req.user.id])
+      : await db.run('UPDATE lecturer_course_notes SET ciphertext=?,iv=?,tag=?,updated_at=? WHERE id=? AND lecturer_id=?', [encrypted.ciphertext, encrypted.iv, encrypted.tag, now, noteId, req.user.id]);
     if (!updated.changes) return res.status(404).json({ error: 'Note not found' });
     res.json({ ok: true, id: noteId, title, body, updatedAt: now });
   } catch (error) {
@@ -390,10 +414,12 @@ app.put('/api/course-notes/:id', authenticated, csrf, async (req, res, next) => 
 
 app.delete('/api/course-notes/:id', authenticated, csrf, async (req, res, next) => {
   try {
-    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
+    if (!['student', 'lecturer'].includes(req.user.role)) return res.status(403).json({ error: 'Course notes are unavailable to this account' });
     const noteId = Number(req.params.id);
     if (!Number.isSafeInteger(noteId) || noteId < 1) return res.status(400).json({ error: 'Invalid note' });
-    const removed = await db.run('DELETE FROM course_notes WHERE id=? AND student_id=?', [noteId, req.user.id]);
+    const removed = req.user.role === 'student'
+      ? await db.run('DELETE FROM course_notes WHERE id=? AND student_id=?', [noteId, req.user.id])
+      : await db.run('DELETE FROM lecturer_course_notes WHERE id=? AND lecturer_id=?', [noteId, req.user.id]);
     if (!removed.changes) return res.status(404).json({ error: 'Note not found' });
     res.json({ ok: true });
   } catch (error) {

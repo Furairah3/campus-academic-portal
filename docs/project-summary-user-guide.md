@@ -14,8 +14,8 @@ The project chose passkeys instead of passwords, server-side authorization inste
 
 - Students register a passkey, view their own profile, course enrollments, and grades, and enroll in available courses.
 - Lecturers register with a single-use invitation, receive an assigned course, view its enrolled student roster, record grades, and create additional courses.
-- Students can create, view, edit, and delete their own notes for courses they are enrolled in. The server enforces student ownership and course enrollment.
-- The separate Protected Academic Note page demonstrates AES-GCM encryption and tamper detection on a fixed sample note. It does not encrypt course notes or academic grades.
+- Students can create, view, edit, and delete their own notes for courses they are enrolled in. Lecturers can create, view, edit, and delete their own teaching notes for courses assigned to them.
+- Student and lecturer course note titles and bodies are encrypted in the database with AES-256-GCM. The server decrypts them after checking the signed-in account and course permissions. The separate Protected Academic Note page demonstrates AES-GCM encryption and tamper detection on a fixed sample note. Grades are not encrypted by this feature.
 
 ## Technology and architecture
 
@@ -23,6 +23,7 @@ The project chose passkeys instead of passwords, server-side authorization inste
 - **API:** Express 5, hosted as Vercel serverless functions.
 - **Authentication:** WebAuthn passkeys through SimpleWebAuthn. Private passkey keys remain in the user's authenticator; the app stores the public credential key and counter.
 - **Database:** libSQL. Development uses a local database file; production uses Turso.
+- **Course note encryption:** AES-256-GCM with a persistent `NOTES_ENCRYPTION_KEY` held in the deployment environment, not in the database or source code. This protects notes at rest; the server can decrypt notes for authorized users, so this is not end-to-end encryption.
 - **Hosting:** Vercel serves the built React assets and routes `/api` requests to Express. The GitHub `main` branch is connected to the Vercel project.
 
 ### Local development
@@ -47,7 +48,8 @@ Public student registration cannot grant a lecturer role. A lecturer invitation 
 - `course_lecturers`: lecturer-to-course assignments used for authorization.
 - `enrolments`: student-to-course membership.
 - `grades`: assessments and integer scores constrained to 0–100.
-- `course_notes`: student-owned title/body notes attached to an enrollment and course.
+- `course_notes`: student-owned encrypted note content attached to an enrollment and course.
+- `lecturer_course_notes`: lecturer-owned encrypted teaching notes attached to an assigned course.
 - `sessions` and `challenges`: server-side login/session state and short-lived WebAuthn challenges.
 
 Startup seeds the demo lecturer and these courses: IS451 Information and Systems Security, CS230 Operating Systems, CS480 Capstone Project, and FIN101 Finance for Non-Finance Professionals. It also seeds four fictional roster students (`S3`-`S6`) across all four courses, with sample grades, so lecturer accounts assigned to a seeded course can see a populated roster. These sample roster records do not have passkeys and cannot sign in; they are for lecturer workflow demonstrations. New courses and new course enrollments do not receive invented grades.
@@ -70,7 +72,7 @@ Sign in as a student, open the dashboard, choose a course under **Explore more c
 
 ### Create a course note
 
-Sign in as a student and open **Course notes** in the left navigation. Choose one of your enrolled courses, enter a title and note, and select **Save note**. Your notes appear on the right. Use **Edit** or **Delete** on a note to manage it later. Notes are private to your student account; the server rejects access from other students and blocks notes for courses you have not joined. Notes are stored in the application database. Do not enter passwords or highly sensitive personal information.
+Sign in as a student and open **Course notes** in the left navigation. Choose one of your enrolled courses, enter a title and note, and select **Save note**. Your notes appear on the right. Use **Edit** or **Delete** on a note to manage it later. Notes are private to your student account; the server rejects access from other students and blocks notes for courses you have not joined. Titles and note text are encrypted before they are stored, and are decrypted for you after sign-in. Do not enter passwords or highly sensitive personal information.
 
 ## Lecturer guide
 
@@ -94,9 +96,13 @@ Sign in as a lecturer. In the course workspace, use **Create a course**, enter a
 
 In the course workspace, select an enrolled student, enter an assessment name and a whole-number grade from 0 to 100, and save it. To edit an existing item, choose **Edit** in its roster row; the form loads that assessment so you can change its student, name, or grade. Choose **Delete** to remove one assessment record after confirming the prompt. The student account and course enrollment remain in place. The server rejects changes if the lecturer is not assigned to that course or the student is not enrolled there.
 
+### Lecturer course notes
+
+Sign in as a lecturer and open **Course notes**. Choose a course assigned to your account, write a teaching note, and save it. You can edit or delete your own notes. The server blocks note access for courses that are not assigned to you. Note text is encrypted in the database and decrypted for the owning lecturer after authorization.
+
 ## Protected Academic Note demonstration
 
-Lecturers see the Protected Academic Note cryptography demonstration. It encrypts a fixed sample note with AES-256-GCM, returns ciphertext/nonce/authentication tag, decrypts it, and demonstrates that tampering is rejected. Student course notes are a separate database feature and are not encrypted by this demonstration.
+The Protected Academic Note page encrypts a fixed sample with AES-256-GCM, returns ciphertext/nonce/authentication tag, decrypts it, and demonstrates that tampering is rejected. This demonstration is separate from persisted course notes, which use the `NOTES_ENCRYPTION_KEY` environment secret.
 
 ## Course creation and lecturer signup status
 

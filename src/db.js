@@ -2,6 +2,7 @@ import { createClient } from '@libsql/client';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { encryptCourseNote } from './courseNotesCrypto.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const dbPath = resolve(root, process.env.DATABASE_PATH || 'database/portal.db');
@@ -64,6 +65,28 @@ export async function initializeDatabase() {
     .map(statement => statement.trim())
     .filter(Boolean);
   await client.batch(statements, 'write');
+  const columns = await client.execute('PRAGMA table_info(course_notes)');
+  const existing = new Set(columns.rows.map(column => column.name));
+  for (const name of ['ciphertext', 'iv', 'tag']) {
+    if (existing.has(name)) continue;
+    try {
+      await client.execute(`ALTER TABLE course_notes ADD COLUMN ${name} TEXT`);
+    } catch (error) {
+      const refreshed = await client.execute('PRAGMA table_info(course_notes)');
+      if (!refreshed.rows.some(column => column.name === name)) throw error;
+    }
+  }
+}
+
+export async function migrateLegacyCourseNotes(key) {
+  const legacyNotes = await db.all('SELECT id,title,body FROM course_notes WHERE ciphertext IS NULL OR iv IS NULL OR tag IS NULL');
+  for (const note of legacyNotes) {
+    const encrypted = encryptCourseNote(key, { title: note.title, body: note.body });
+    await db.run(
+      "UPDATE course_notes SET title='Encrypted',body='Encrypted',ciphertext=?,iv=?,tag=? WHERE id=? AND (ciphertext IS NULL OR iv IS NULL OR tag IS NULL)",
+      [encrypted.ciphertext, encrypted.iv, encrypted.tag, note.id],
+    );
+  }
 }
 
 export async function seedDemoData() {

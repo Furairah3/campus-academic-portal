@@ -25,7 +25,8 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   const base = `http://localhost:${port}`;
   const lecturerInviteCode = randomBytes(24).toString('base64url');
   const sessionSecret = randomBytes(32).toString('hex');
-  const serverEnv = { ...process.env, PORT: String(port), DATABASE_PATH: dbPath, ORIGIN: base, LECTURER_INVITE_CODE: lecturerInviteCode, SESSION_SECRET: sessionSecret };
+  const notesEncryptionKey = randomBytes(32).toString('base64');
+  const serverEnv = { ...process.env, PORT: String(port), DATABASE_PATH: dbPath, ORIGIN: base, LECTURER_INVITE_CODE: lecturerInviteCode, SESSION_SECRET: sessionSecret, NOTES_ENCRYPTION_KEY: notesEncryptionKey };
   let child = spawn(process.execPath, ['src/server.js'], {
     cwd: process.cwd(),
     env: serverEnv,
@@ -77,10 +78,18 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   });
   assert.equal(createdNoteResponse.status, 201, 'students can create a note for an enrolled course');
   const createdNote = await createdNoteResponse.json();
+  const storedStudentNote = await testDb.execute({ sql: 'SELECT title,body,ciphertext,iv,tag FROM course_notes WHERE id=?', args: [createdNote.id] });
+  assert.equal(storedStudentNote.rows[0].title, 'Encrypted');
+  assert.equal(storedStudentNote.rows[0].body, 'Encrypted');
+  assert.ok(storedStudentNote.rows[0].ciphertext && storedStudentNote.rows[0].iv && storedStudentNote.rows[0].tag, 'student note content is stored as authenticated ciphertext');
+  assert.equal(String(storedStudentNote.rows[0].ciphertext).includes('Review the CIA triad.'), false);
   const notesFromOtherCourse = await fetch(`${base}/api/course-notes`, { method: 'POST', headers: studentHeaders, body: JSON.stringify({ courseId: 'CS230', title: 'Not enrolled', body: 'Should fail.' }) });
   assert.equal(notesFromOtherCourse.status, 403, 'students cannot add notes to courses they are not enrolled in');
   const updateNoteResponse = await fetch(`${base}/api/course-notes/${createdNote.id}`, { method: 'PUT', headers: studentHeaders, body: JSON.stringify({ title: 'Week one revised', body: 'Review confidentiality, integrity, and availability.' }) });
   assert.equal(updateNoteResponse.status, 200, 'students can edit their own notes');
+  const decryptedStudentNote = await fetch(`${base}/api/course-notes`, { headers: { Cookie: `campus.sid=${signedStudentSession}` } }).then(response => response.json());
+  assert.equal(decryptedStudentNote.notes[0].title, 'Week one revised', 'the owner receives decrypted note content after authentication');
+  assert.equal(decryptedStudentNote.notes[0].body, 'Review confidentiality, integrity, and availability.');
   const otherSessionId = randomBytes(18).toString('base64url');
   const otherSignedSession = `s:${otherSessionId}.${createHmac('sha256', sessionSecret).update(otherSessionId).digest('base64').replace(/=+$/, '')}`;
   await testDb.execute({ sql: 'INSERT INTO sessions(sid,data,expires_at) VALUES(?,?,?)', args: [otherSessionId, JSON.stringify({ cookie: { originalMaxAge: 28800000, httpOnly: true, path: '/', sameSite: 'lax' }, userId: 'S2', csrfToken: studentCsrf }), Date.now() + 3600000] });
@@ -136,6 +145,24 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   await testDb.close();
   testDb = null;
   const lecturerHeaders = { Origin: base, Cookie: `campus.sid=${signedLecturerSession}`, 'X-CSRF-Token': lecturerCsrf, 'Content-Type': 'application/json' };
+  const lecturerNoteResponse = await fetch(`${base}/api/course-notes`, { method: 'POST', headers: lecturerHeaders, body: JSON.stringify({ courseId: 'CS230', title: 'Lesson plan', body: 'Introduce process scheduling.' }) });
+  assert.equal(lecturerNoteResponse.status, 201, 'lecturers can create notes for assigned courses');
+  const lecturerNote = await lecturerNoteResponse.json();
+  const lecturerOtherCourse = await fetch(`${base}/api/course-notes`, { method: 'POST', headers: lecturerHeaders, body: JSON.stringify({ courseId: 'CS480', title: 'Not assigned', body: 'Should fail.' }) });
+  assert.equal(lecturerOtherCourse.status, 403, 'lecturers cannot create notes for unassigned courses');
+  const lecturerNotesList = await fetch(`${base}/api/course-notes`, { headers: { Cookie: `campus.sid=${signedLecturerSession}` } }).then(response => response.json());
+  assert.equal(lecturerNotesList.notes[0].id, lecturerNote.id);
+  assert.equal(lecturerNotesList.notes[0].body, 'Introduce process scheduling.', 'lecturers can read their decrypted teaching notes');
+  testDb = createClient({ url: pathToFileURL(dbPath).href });
+  const storedLecturerNote = await testDb.execute({ sql: 'SELECT ciphertext,iv,tag FROM lecturer_course_notes WHERE id=?', args: [lecturerNote.id] });
+  assert.ok(storedLecturerNote.rows[0].ciphertext && storedLecturerNote.rows[0].iv && storedLecturerNote.rows[0].tag, 'lecturer note content is encrypted in storage');
+  await testDb.close();
+  testDb = null;
+  testDb = createClient({ url: pathToFileURL(dbPath).href });
+  const legacyNoteId = randomBytes(4).readUInt32BE(0);
+  await testDb.execute({ sql: 'INSERT INTO course_notes(id,course_id,student_id,title,body,created_at,updated_at) VALUES(?,?,?,?,?,?,?)', args: [legacyNoteId, 'IS451', 'S1', 'Older note', 'Migrate this legacy note.', Date.now(), Date.now()] });
+  await testDb.close();
+  testDb = null;
   const studentGradeDelete = await fetch(`${base}/api/grades`, { method: 'DELETE', headers: { ...studentHeaders }, body: JSON.stringify({ studentId: 'S3', courseId: 'CS230', assessment: 'OS concepts' }) });
   assert.equal(studentGradeDelete.status, 403, 'student accounts cannot delete assessment records');
   const unassignedGradeDelete = await fetch(`${base}/api/grades`, { method: 'DELETE', headers: lecturerHeaders, body: JSON.stringify({ studentId: 'S3', courseId: 'IS451', assessment: 'Threat model' }) });
@@ -181,4 +208,13 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
     await pause(100);
   }
   assert.equal(restartedHealth?.status, 200, 'restart safely seeds existing demo accounts enrolled outside IS451');
+  const migratedNotes = await fetch(`${base}/api/course-notes`, { headers: { Cookie: `campus.sid=${signedStudentSession}` } }).then(response => response.json());
+  const migratedNote = migratedNotes.notes.find(note => note.id === legacyNoteId);
+  assert.equal(migratedNote?.title, 'Older note', 'legacy plaintext student notes are migrated and remain readable');
+  assert.equal(migratedNote?.body, 'Migrate this legacy note.');
+  testDb = createClient({ url: pathToFileURL(dbPath).href });
+  const migratedAtRest = await testDb.execute({ sql: 'SELECT title,body,ciphertext,iv,tag FROM course_notes WHERE id=?', args: [legacyNoteId] });
+  assert.equal(migratedAtRest.rows[0].title, 'Encrypted');
+  assert.equal(migratedAtRest.rows[0].body, 'Encrypted');
+  assert.ok(migratedAtRest.rows[0].ciphertext && migratedAtRest.rows[0].iv && migratedAtRest.rows[0].tag);
 });
