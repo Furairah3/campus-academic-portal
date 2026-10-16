@@ -50,7 +50,7 @@ Public student registration cannot grant a lecturer role. A lecturer invitation 
 - `course_notes`: student-owned title/body notes attached to an enrollment and course.
 - `sessions` and `challenges`: server-side login/session state and short-lived WebAuthn challenges.
 
-Startup seeds the demo lecturer and these courses: IS451 Information and Systems Security, CS230 Operating Systems, CS480 Capstone Project, and FIN101 Finance for Non-Finance Professionals. Demo student accounts may receive fictional IS451 grades. New courses and new course enrollments do not receive invented grades.
+Startup seeds the demo lecturer and these courses: IS451 Information and Systems Security, CS230 Operating Systems, CS480 Capstone Project, and FIN101 Finance for Non-Finance Professionals. It also seeds four fictional roster students (`S3`-`S6`) across all four courses, with sample grades, so lecturer accounts assigned to a seeded course can see a populated roster. These sample roster records do not have passkeys and cannot sign in; they are for lecturer workflow demonstrations. New courses and new course enrollments do not receive invented grades.
 
 ## Student guide
 

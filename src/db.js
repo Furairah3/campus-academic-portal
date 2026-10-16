@@ -70,6 +70,10 @@ export async function seedDemoData() {
   await db.transaction(async tx => {
     await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['S1', 'Ama Mensah', 'student']);
     await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['S2', 'Kojo Owusu', 'student']);
+    await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['S3', 'Nana Agyeman', 'student']);
+    await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['S4', 'Kwame Asante', 'student']);
+    await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['S5', 'Esi Tetteh', 'student']);
+    await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['S6', 'Kofi Adu', 'student']);
     await tx.run('INSERT OR IGNORE INTO users(id, display_name, role) VALUES (?, ?, ?)', ['L1', 'Dr. Abena Boateng', 'lecturer']);
     await tx.run('INSERT OR IGNORE INTO courses(id,title,lecturer_id) VALUES (?,?,?)', ['IS451', 'Information and Systems Security', 'L1']);
     await tx.run('INSERT OR IGNORE INTO courses(id,title,lecturer_id) VALUES (?,?,?)', ['CS230', 'Operating Systems', 'L1']);
@@ -81,10 +85,26 @@ export async function seedDemoData() {
     await tx.run('INSERT OR IGNORE INTO course_lecturers(course_id,lecturer_id) VALUES (?,?)', ['FIN101', 'L1']);
     await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['IS451', 'S1']);
     await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['IS451', 'S2']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['IS451', 'S3']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['IS451', 'S6']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['CS230', 'S3']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['CS230', 'S4']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['CS480', 'S4']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['CS480', 'S5']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['FIN101', 'S5']);
+    await tx.run('INSERT OR IGNORE INTO enrolments(course_id,student_id) VALUES (?,?)', ['FIN101', 'S6']);
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S1', 'Security lab', 86]);
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S1', 'Quiz', 91]);
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S2', 'Security lab', 78]);
     await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S2', 'Quiz', 84]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S3', 'Threat model', 89]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['IS451', 'S6', 'Security quiz', 84]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['CS230', 'S3', 'OS concepts', 92]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['CS230', 'S4', 'Process scheduling', 87]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['CS480', 'S4', 'Capstone proposal', 91]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['CS480', 'S5', 'Requirements review', 88]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['FIN101', 'S5', 'Budget case', 86]);
+    await tx.run('INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) VALUES (?,?,?,?)', ['FIN101', 'S6', 'Finance quiz', 90]);
     await tx.run("INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) SELECT e.course_id,e.student_id,'Information Security Quiz',88 FROM enrolments e WHERE e.course_id='IS451' AND e.student_id LIKE 'D-%'");
     await tx.run("INSERT OR IGNORE INTO grades(course_id,student_id,assessment,grade) SELECT e.course_id,e.student_id,'Access Control Lab',92 FROM enrolments e WHERE e.course_id='IS451' AND e.student_id LIKE 'D-%'");
   });

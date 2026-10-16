@@ -39,7 +39,15 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
     await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(1500)]);
     if (restartedChild) await Promise.race([new Promise(resolve => restartedChild.once('exit', resolve)), pause(1500)]);
     await testDb?.close();
-    for (const suffix of ['', '-shm', '-wal']) rmSync(dbPath + suffix, { force: true });
+    for (const suffix of ['', '-shm', '-wal']) {
+      for (let attempt = 0; ; attempt++) {
+        try { rmSync(dbPath + suffix, { force: true }); break; }
+        catch (error) {
+          if (error.code !== 'EPERM' || attempt >= 20) throw error;
+          await pause(100);
+        }
+      }
+    }
   });
 
   let health;
@@ -52,6 +60,8 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   assert.deepEqual(await health.json(), { status: 'ok' });
 
   testDb = createClient({ url: pathToFileURL(dbPath).href });
+  const seededRosters = await testDb.execute("SELECT course_id,COUNT(*) AS total FROM enrolments WHERE student_id IN ('S3','S4','S5','S6') GROUP BY course_id ORDER BY course_id");
+  assert.deepEqual(seededRosters.rows.map(row => [row.course_id, Number(row.total)]), [['CS230', 2], ['CS480', 2], ['FIN101', 2], ['IS451', 2]], 'fictional sample students are enrolled across every seeded course');
   const studentSessionId = randomBytes(18).toString('base64url');
   const studentCsrf = randomBytes(24).toString('base64url');
   const signedStudentSession = `s:${studentSessionId}.${createHmac('sha256', sessionSecret).update(studentSessionId).digest('base64').replace(/=+$/, '')}`;
