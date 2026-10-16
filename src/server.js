@@ -340,6 +340,67 @@ app.get('/api/records/me', authenticated, async (req, res, next) => {
   }
 });
 
+app.get('/api/course-notes', authenticated, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
+    const courses = await db.all('SELECT c.id,c.title FROM enrolments e JOIN courses c ON c.id=e.course_id WHERE e.student_id=? ORDER BY c.id', [req.user.id]);
+    const notes = await db.all('SELECT n.id,n.course_id AS courseId,c.title AS courseTitle,n.title,n.body,n.created_at AS createdAt,n.updated_at AS updatedAt FROM course_notes n JOIN courses c ON c.id=n.course_id WHERE n.student_id=? ORDER BY n.updated_at DESC,n.id DESC', [req.user.id]);
+    res.json({ courses, notes });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/course-notes', authenticated, csrf, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
+    const courseId = String(req.body.courseId || '').trim().toUpperCase();
+    const title = String(req.body.title || '').trim().replace(/\s+/g, ' ');
+    const body = String(req.body.body || '').trim();
+    if (!/^[A-Z]{2,5}[0-9]{2,4}$/.test(courseId) || title.length < 1 || title.length > 100 || body.length < 1 || body.length > 10000) {
+      return res.status(400).json({ error: 'Choose an enrolled course and enter a title and note (up to 10,000 characters)' });
+    }
+    const enrolled = await db.get('SELECT 1 FROM enrolments WHERE course_id=? AND student_id=?', [courseId, req.user.id]);
+    if (!enrolled) return res.status(403).json({ error: 'You can only add notes to courses you are enrolled in' });
+    const now = Date.now();
+    const result = await db.run('INSERT INTO course_notes(course_id,student_id,title,body,created_at,updated_at) VALUES(?,?,?,?,?,?)', [courseId, req.user.id, title, body, now, now]);
+    res.status(201).json({ id: Number(result.lastInsertRowid), courseId, title, body, createdAt: now, updatedAt: now });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/course-notes/:id', authenticated, csrf, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
+    const noteId = Number(req.params.id);
+    const title = String(req.body.title || '').trim().replace(/\s+/g, ' ');
+    const body = String(req.body.body || '').trim();
+    if (!Number.isSafeInteger(noteId) || noteId < 1 || title.length < 1 || title.length > 100 || body.length < 1 || body.length > 10000) {
+      return res.status(400).json({ error: 'Enter a title and note of up to 10,000 characters' });
+    }
+    const now = Date.now();
+    const updated = await db.run('UPDATE course_notes SET title=?,body=?,updated_at=? WHERE id=? AND student_id=?', [title, body, now, noteId, req.user.id]);
+    if (!updated.changes) return res.status(404).json({ error: 'Note not found' });
+    res.json({ ok: true, id: noteId, title, body, updatedAt: now });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/course-notes/:id', authenticated, csrf, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'student') return res.status(403).json({ error: 'Course notes are available to student accounts only' });
+    const noteId = Number(req.params.id);
+    if (!Number.isSafeInteger(noteId) || noteId < 1) return res.status(400).json({ error: 'Invalid note' });
+    const removed = await db.run('DELETE FROM course_notes WHERE id=? AND student_id=?', [noteId, req.user.id]);
+    if (!removed.changes) return res.status(404).json({ error: 'Note not found' });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/records/students/:id', authenticated, async (req, res, next) => {
   try {
     const studentId = String(req.params.id).toUpperCase();

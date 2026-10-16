@@ -33,6 +33,16 @@ CREATE TABLE IF NOT EXISTS grades (
   PRIMARY KEY(course_id, student_id, assessment),
   FOREIGN KEY(course_id, student_id) REFERENCES enrolments(course_id, student_id)
 );
+CREATE TABLE IF NOT EXISTS course_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  course_id TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 100),
+  body TEXT NOT NULL CHECK(length(body) BETWEEN 1 AND 10000),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY(course_id, student_id) REFERENCES enrolments(course_id, student_id)
+);
 CREATE TABLE IF NOT EXISTS credentials (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),

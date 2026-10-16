@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { rmSync } from 'node:fs';
+import { createClient } from '@libsql/client';
 
 async function freePort() {
   const server = createServer();
@@ -22,17 +24,21 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   const dbPath = join(tmpdir(), `is451-api-${randomBytes(8).toString('hex')}.db`);
   const base = `http://localhost:${port}`;
   const lecturerInviteCode = randomBytes(24).toString('base64url');
-  const serverEnv = { ...process.env, PORT: String(port), DATABASE_PATH: dbPath, ORIGIN: base, LECTURER_INVITE_CODE: lecturerInviteCode };
+  const sessionSecret = randomBytes(32).toString('hex');
+  const serverEnv = { ...process.env, PORT: String(port), DATABASE_PATH: dbPath, ORIGIN: base, LECTURER_INVITE_CODE: lecturerInviteCode, SESSION_SECRET: sessionSecret };
   let child = spawn(process.execPath, ['src/server.js'], {
     cwd: process.cwd(),
     env: serverEnv,
     stdio: 'ignore',
   });
   let restartedChild;
+  let testDb;
   t.after(async () => {
     child.kill();
     restartedChild?.kill();
     await Promise.race([new Promise(resolve => child.once('exit', resolve)), pause(1500)]);
+    if (restartedChild) await Promise.race([new Promise(resolve => restartedChild.once('exit', resolve)), pause(1500)]);
+    await testDb?.close();
     for (const suffix of ['', '-shm', '-wal']) rmSync(dbPath + suffix, { force: true });
   });
 
@@ -44,6 +50,36 @@ test('API rejects unauthenticated access and invalid cross-origin enrollment', a
   }
   assert.equal(health?.status, 200, 'API starts and serves its health check');
   assert.deepEqual(await health.json(), { status: 'ok' });
+
+  testDb = createClient({ url: pathToFileURL(dbPath).href });
+  const studentSessionId = randomBytes(18).toString('base64url');
+  const studentCsrf = randomBytes(24).toString('base64url');
+  const signedStudentSession = `s:${studentSessionId}.${createHmac('sha256', sessionSecret).update(studentSessionId).digest('base64').replace(/=+$/, '')}`;
+  const sessionData = JSON.stringify({ cookie: { originalMaxAge: 28800000, httpOnly: true, path: '/', sameSite: 'lax' }, userId: 'S1', csrfToken: studentCsrf });
+  await testDb.execute({ sql: 'INSERT INTO sessions(sid,data,expires_at) VALUES(?,?,?)', args: [studentSessionId, sessionData, Date.now() + 3600000] });
+  const studentHeaders = { Origin: base, Cookie: `campus.sid=${signedStudentSession}`, 'X-CSRF-Token': studentCsrf, 'Content-Type': 'application/json' };
+  const notesBefore = await fetch(`${base}/api/course-notes`, { headers: { Cookie: `campus.sid=${signedStudentSession}` } });
+  assert.equal(notesBefore.status, 200, 'authenticated students can list notes for their enrolled courses');
+  assert.deepEqual((await notesBefore.json()).notes, []);
+  const createdNoteResponse = await fetch(`${base}/api/course-notes`, {
+    method: 'POST', headers: studentHeaders,
+    body: JSON.stringify({ courseId: 'IS451', title: 'Week one', body: 'Review the CIA triad.' }),
+  });
+  assert.equal(createdNoteResponse.status, 201, 'students can create a note for an enrolled course');
+  const createdNote = await createdNoteResponse.json();
+  const notesFromOtherCourse = await fetch(`${base}/api/course-notes`, { method: 'POST', headers: studentHeaders, body: JSON.stringify({ courseId: 'CS230', title: 'Not enrolled', body: 'Should fail.' }) });
+  assert.equal(notesFromOtherCourse.status, 403, 'students cannot add notes to courses they are not enrolled in');
+  const updateNoteResponse = await fetch(`${base}/api/course-notes/${createdNote.id}`, { method: 'PUT', headers: studentHeaders, body: JSON.stringify({ title: 'Week one revised', body: 'Review confidentiality, integrity, and availability.' }) });
+  assert.equal(updateNoteResponse.status, 200, 'students can edit their own notes');
+  const otherSessionId = randomBytes(18).toString('base64url');
+  const otherSignedSession = `s:${otherSessionId}.${createHmac('sha256', sessionSecret).update(otherSessionId).digest('base64').replace(/=+$/, '')}`;
+  await testDb.execute({ sql: 'INSERT INTO sessions(sid,data,expires_at) VALUES(?,?,?)', args: [otherSessionId, JSON.stringify({ cookie: { originalMaxAge: 28800000, httpOnly: true, path: '/', sameSite: 'lax' }, userId: 'S2', csrfToken: studentCsrf }), Date.now() + 3600000] });
+  await testDb.close();
+  testDb = null;
+  const otherStudentEdit = await fetch(`${base}/api/course-notes/${createdNote.id}`, { method: 'PUT', headers: { ...studentHeaders, Cookie: `campus.sid=${otherSignedSession}` }, body: JSON.stringify({ title: 'Unauthorized edit', body: 'Must be denied.' }) });
+  assert.equal(otherStudentEdit.status, 404, 'students cannot edit another student’s notes');
+  const deleteNoteResponse = await fetch(`${base}/api/course-notes/${createdNote.id}`, { method: 'DELETE', headers: studentHeaders });
+  assert.equal(deleteNoteResponse.status, 200, 'students can delete their own notes');
 
   assert.equal((await fetch(`${base}/api/records/me`)).status, 401);
   assert.equal((await fetch(`${base}/api/records/students/S2`)).status, 401);

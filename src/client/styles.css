@@ -210,6 +210,19 @@ td b { color: #263750; font-weight: 650; }
 .note-empty { min-height: 205px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; }.note-empty-icon { width: 43px; height: 43px; display: grid; place-items: center; margin-bottom: 4px; border-radius: 12px; color: var(--purple-deep); background: var(--purple-pale); }.note-empty b { color: #33445c; font-size: 14px; }.note-empty > span:last-child { font-size: 12px; }
 .result-box { display: grid; gap: 5px; margin-top: 13px; padding: 12px 13px; border: 1px solid; border-radius: 9px; font-size: 12px; line-height: 1.55; }.result-box b { font-size: 12px; }.result-success { color: var(--success); border-color: #c4e9d1; background: var(--success-pale); }.result-error { color: var(--danger); border-color: #f1c8c4; background: var(--danger-pale); }.result-box span { overflow-wrap: anywhere; }
 .note-explanation { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; color: #52637a; background: #fff; }.note-explanation summary { cursor: pointer; color: #40516b; font-size: 13px; font-weight: 650; }.note-explanation p { max-width: 850px; margin: 11px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.course-notes-layout { display: grid; grid-template-columns: minmax(280px,.78fr) minmax(0,1.22fr); gap: 16px; align-items: start; }
+.course-note-editor, .course-note-card { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 13px; background: #fff; box-shadow: 0 4px 15px rgba(23,32,51,.025); }
+.course-note-editor h3 { margin: 6px 0 18px; color: var(--ink); font-size: 18px; }
+.course-note-editor label { display: block; margin: 13px 0 6px; color: #34445d; font-size: 12px; font-weight: 650; }
+.course-note-editor input, .course-note-editor select, .course-note-editor textarea { width: 100%; padding: 11px 12px; border: 1px solid #ccd7e4; border-radius: 8px; color: #25344c; background: #fff; font: inherit; font-size: 13px; }
+.course-note-editor input, .course-note-editor select { min-height: 42px; }.course-note-editor textarea { min-height: 175px; resize: vertical; line-height: 1.6; }
+.note-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }.note-editor-footer > span { color: var(--muted); font-size: 11px; }
+.course-note-editor .form-help { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }.note-cancel { margin-top: 12px; }
+.course-note-list > .section-header { margin: 0 0 12px; }.note-count { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; color: var(--purple-deep); background: var(--purple-pale); font-size: 12px; font-weight: 700; }
+.course-note-card { margin-bottom: 11px; padding: 17px; }.course-note-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; }.course-note-meta time { color: var(--muted); font-size: 10px; }
+.course-note-card h4 { margin: 13px 0 3px; color: var(--ink); font-size: 16px; }.course-note-course { margin: 0 0 12px; color: var(--muted); font-size: 11px; }.course-note-body { margin: 0; color: #3d4e65; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.course-note-actions { display: flex; gap: 15px; margin-top: 13px; padding-top: 10px; border-top: 1px solid #edf1f5; }.course-note-actions .text-action { font-size: 12px; }.course-note-actions .note-delete { color: var(--danger); }
+.note-list-empty { min-height: 160px; border: 1px dashed #cbd8e5; border-radius: 12px; background: #fff; }
 
 .empty-state { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 25px; border: 1px dashed #cbd8e5; border-radius: 13px; background: #fff; text-align: center; }
 .empty-state-icon { width: 43px; height: 43px; display: grid; place-items: center; margin-bottom: 3px; border-radius: 12px; color: var(--blue-deep); background: #eaf7ff; }
@@ -268,6 +281,7 @@ td b { color: #263750; font-weight: 650; }
   .lecturer-layout { grid-template-columns: 1fr; }.lecturer-page > .section-header { margin-top: 18px; }
   .table-card { width: 100%; }.table-scroll table { min-width: 540px; }
   .note-intro h2 { font-size: 25px; }.note-layout { grid-template-columns: 1fr; }.note-card { padding: 17px; }
+  .course-notes-layout { grid-template-columns: 1fr; }
   .data-field { grid-template-columns: 112px minmax(0,1fr); gap: 9px; }.note-actions { flex-direction: column; }.note-actions .button { width: 100%; }
 }
 

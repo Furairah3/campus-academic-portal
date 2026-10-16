@@ -14,7 +14,8 @@ The project chose passkeys instead of passwords, server-side authorization inste
 
 - Students register a passkey, view their own profile, course enrollments, and grades, and enroll in available courses.
 - Lecturers register with a single-use invitation, receive an assigned course, view its enrolled student roster, record grades, and create additional courses.
-- The Protected Academic Note page demonstrates AES-GCM encryption and tamper detection on a fixed sample note. It is not a course-linked note editor and does not encrypt academic grades.
+- Students can create, view, edit, and delete their own notes for courses they are enrolled in. The server enforces student ownership and course enrollment.
+- The separate Protected Academic Note page demonstrates AES-GCM encryption and tamper detection on a fixed sample note. It does not encrypt course notes or academic grades.
 
 ## Technology and architecture
 
@@ -46,6 +47,7 @@ Public student registration cannot grant a lecturer role. A lecturer invitation 
 - `course_lecturers`: lecturer-to-course assignments used for authorization.
 - `enrolments`: student-to-course membership.
 - `grades`: assessments and integer scores constrained to 0–100.
+- `course_notes`: student-owned title/body notes attached to an enrollment and course.
 - `sessions` and `challenges`: server-side login/session state and short-lived WebAuthn challenges.
 
 Startup seeds the demo lecturer and these courses: IS451 Information and Systems Security, CS230 Operating Systems, CS480 Capstone Project, and FIN101 Finance for Non-Finance Professionals. Demo student accounts may receive fictional IS451 grades. New courses and new course enrollments do not receive invented grades.
@@ -65,6 +67,10 @@ The sign-in list remembers recently created IDs in that browser's local storage.
 ### Enroll in another course
 
 Sign in as a student, open the dashboard, choose a course under **Explore more courses**, then choose **Enroll**. The course appears in your profile. Assessments appear after they are recorded by a lecturer.
+
+### Create a course note
+
+Sign in as a student and open **Course notes** in the left navigation. Choose one of your enrolled courses, enter a title and note, and select **Save note**. Your notes appear on the right. Use **Edit** or **Delete** on a note to manage it later. Notes are private to your student account; the server rejects access from other students and blocks notes for courses you have not joined. Notes are stored in the application database. Do not enter passwords or highly sensitive personal information.
 
 ## Lecturer guide
 
@@ -88,13 +94,13 @@ Sign in as a lecturer. In the course workspace, use **Create a course**, enter a
 
 In the course workspace, select an enrolled student, enter an assessment name and a whole-number grade from 0 to 100, and save it. The server rejects requests if the lecturer is not assigned to that course or the student is not enrolled there.
 
-## Protected Academic Note
+## Protected Academic Note demonstration
 
-The note page is a cryptography demonstration, not a note creation or storage feature. It encrypts a fixed sample note with AES-256-GCM, returns ciphertext/nonce/authentication tag, decrypts it, and demonstrates that tampering is rejected. It does not store arbitrary notes or attach notes to courses.
+Lecturers see the Protected Academic Note cryptography demonstration. It encrypts a fixed sample note with AES-256-GCM, returns ciphertext/nonce/authentication tag, decrypts it, and demonstrates that tampering is rejected. Student course notes are a separate database feature and are not encrypted by this demonstration.
 
 ## Course creation and lecturer signup status
 
-Course creation is available only to signed-in lecturers. Student course enrollment is separate. Lecturer signup is invite-only so a public visitor cannot self-assign grade-editing permissions. If the lecturer button is unavailable, check that the name is at least two characters, the invitation is entered, and a course is selected. If the API says the invitation is invalid or already used, request a new one.
+Course creation is available only to signed-in lecturers. Student course enrollment is separate. Student notes are available only in courses the student has joined. Lecturer signup is invite-only so a public visitor cannot self-assign grade-editing permissions. If the lecturer button is unavailable, check that the name is at least two characters, the invitation is entered, and a course is selected. If the API says the invitation is invalid or already used, request a new one.
 
 ## Build, deployment, and verification
 

@@ -53,6 +53,10 @@ function App() {
   const [notePayload, setNotePayload] = useState(null);
   const [noteRecovered, setNoteRecovered] = useState('');
   const [tamperDetected, setTamperDetected] = useState(null);
+  const [courseNotes, setCourseNotes] = useState([]);
+  const [notesCourses, setNotesCourses] = useState([]);
+  const [noteDraft, setNoteDraft] = useState({ courseId: '', title: '', body: '' });
+  const [editingNoteId, setEditingNoteId] = useState(null);
   const [demoAccountIds, setDemoAccountIds] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('campus.demoAccountIds') || '[]');
@@ -113,6 +117,11 @@ function App() {
     if (!user) return;
     if (user.role === 'student') {
       api('/api/records/me').then(setRecords).catch(requestError => setError(requestError.message));
+      api('/api/course-notes').then(data => {
+        setCourseNotes(data.notes || []);
+        setNotesCourses(data.courses || []);
+        setNoteDraft(draft => ({ ...draft, courseId: draft.courseId || data.courses?.[0]?.id || '' }));
+      }).catch(requestError => setError(requestError.message));
     } else if (user.role === 'lecturer') {
       api('/api/lecturer/roster').then(setRoster).catch(requestError => setError(requestError.message));
     }
@@ -250,6 +259,9 @@ function App() {
       setUser(null);
       setRecords(null);
       setRoster(null);
+      setCourseNotes([]);
+      setNotesCourses([]);
+      setEditingNoteId(null);
       setNotePayload(null);
       setNoteRecovered('');
       setTamperDetected(null);
@@ -301,6 +313,43 @@ function App() {
     }
   }
 
+  async function saveCourseNote(event) {
+    event.preventDefault();
+    clearMessages();
+    try {
+      if (editingNoteId) {
+        await api(`/api/course-notes/${editingNoteId}`, { method: 'PUT', body: JSON.stringify({ title: noteDraft.title, body: noteDraft.body }) });
+        setNotice('Your course note was updated.');
+      } else {
+        await api('/api/course-notes', { method: 'POST', body: JSON.stringify(noteDraft) });
+        setNotice('Your note was saved to the selected course.');
+      }
+      const data = await api('/api/course-notes');
+      setCourseNotes(data.notes || []);
+      setNotesCourses(data.courses || []);
+      setNoteDraft({ courseId: data.courses?.[0]?.id || '', title: '', body: '' });
+      setEditingNoteId(null);
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  async function deleteCourseNote(noteId) {
+    clearMessages();
+    try {
+      await api(`/api/course-notes/${noteId}`, { method: 'DELETE' });
+      const data = await api('/api/course-notes');
+      setCourseNotes(data.notes || []);
+      if (editingNoteId === noteId) {
+        setEditingNoteId(null);
+        setNoteDraft({ courseId: data.courses?.[0]?.id || '', title: '', body: '' });
+      }
+      setNotice('Your note was deleted.');
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
   async function saveGrade(event) {
     event.preventDefault();
     clearMessages();
@@ -327,14 +376,14 @@ function App() {
     ? [
         ['dashboard', 'Dashboard', 'home'],
         ...(isStudent ? [['records', 'Academic records', 'records']] : [['roster', 'Course workspace', 'course']]),
-        ['note', 'Protected academic note', 'note'],
+        ['note', isStudent ? 'Course notes' : 'Protected academic note', 'note'],
       ]
     : [
         ['overview', 'Portal overview', 'home'],
         ['signin', 'Sign in', 'user'],
         ['enroll', 'Register passkey', 'records'],
       ];
-  const title = pageTitles[page] || pageTitles.overview;
+  const title = page === 'note' && isStudent ? ['Course notes', 'Create and manage your notes by course'] : pageTitles[page] || pageTitles.overview;
 
   return (
     <div className="portal-shell">
@@ -385,7 +434,9 @@ function App() {
           {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onEnrollCourse={enrollInCourse} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
           {page === 'records' && <StudentRecords user={user} records={records} onSignIn={() => navigate('signin')} />}
           {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onSignIn={() => navigate('signin')} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
-          {page === 'note' && <ProtectedNote user={user} payload={notePayload} recovered={noteRecovered} tamperDetected={tamperDetected} onEncrypt={encryptNote} onDecrypt={decryptNote} onTestIntegrity={testNoteIntegrity} onSignIn={() => navigate('signin')} />}
+          {page === 'note' && (isStudent
+            ? <StudentCourseNotes user={user} courses={notesCourses} notes={courseNotes} draft={noteDraft} setDraft={setNoteDraft} editingNoteId={editingNoteId} setEditingNoteId={setEditingNoteId} onSave={saveCourseNote} onDelete={deleteCourseNote} onSignIn={() => navigate('signin')} />
+            : <ProtectedNote user={user} payload={notePayload} recovered={noteRecovered} tamperDetected={tamperDetected} onEncrypt={encryptNote} onDecrypt={decryptNote} onTestIntegrity={testNoteIntegrity} onSignIn={() => navigate('signin')} />)}
         </main>
 
         <footer className="page-footer"><span>Campus Academic Portal</span><span>Fictional academic records for classroom use</span></footer>
@@ -528,6 +579,41 @@ function LecturerWorkspace({ user, roster, edit, setEdit, onSave, onSignIn, onOp
           <p className="form-help">Only this assigned course can be updated.</p>
         </form>}
       </div>}
+    </section>
+  );
+}
+
+function StudentCourseNotes({ user, courses, notes, draft, setDraft, editingNoteId, setEditingNoteId, onSave, onDelete, onSignIn }) {
+  if (!user) return <SignedOutState title="Sign in to manage your course notes" onSignIn={onSignIn} />;
+  if (user.role !== 'student') return <EmptyState title="Course notes are for students" description="Sign in with a student account to create notes for your enrolled courses." />;
+  return (
+    <section className="note-page">
+      <div className="note-intro"><span className="eyebrow">YOUR STUDY NOTES</span><h2>Course notes</h2><p>Create private notes for courses you are enrolled in. Only your account can view, edit, or delete your notes.</p></div>
+      <div className="course-notes-layout">
+        <form className="course-note-editor" onSubmit={onSave}>
+          <span className="eyebrow">{editingNoteId ? 'EDIT NOTE' : 'NEW NOTE'}</span>
+          <h3>{editingNoteId ? 'Update your note' : 'Add a course note'}</h3>
+          <label htmlFor="note-course">Course</label>
+          <select id="note-course" value={draft.courseId} onChange={event => setDraft({ ...draft, courseId: event.target.value })} required disabled={Boolean(editingNoteId) || !courses.length}>
+            <option value="">Choose an enrolled course</option>{courses.map(course => <option key={course.id} value={course.id}>{course.id} - {course.title}</option>)}
+          </select>
+          <label htmlFor="note-title">Title</label>
+          <input id="note-title" value={draft.title} onChange={event => setDraft({ ...draft, title: event.target.value })} maxLength={100} placeholder="Lecture 1 — Introduction" required />
+          <label htmlFor="note-body">Note</label>
+          <textarea id="note-body" value={draft.body} onChange={event => setDraft({ ...draft, body: event.target.value })} maxLength={10000} rows={9} placeholder="Write your study notes here..." required />
+          <div className="note-editor-footer"><span>{draft.body.length}/10,000</span><button className="button button-primary" type="submit" disabled={!courses.length}>{editingNoteId ? 'Save changes' : 'Save note'}</button></div>
+          {editingNoteId && <button className="text-action note-cancel" type="button" onClick={() => { setEditingNoteId(null); setDraft({ courseId: courses[0]?.id || '', title: '', body: '' }); }}>Cancel editing</button>}
+          {!courses.length && <p className="form-help">Enroll in a course before adding notes.</p>}
+          <p className="form-help">Notes are stored with your account. Avoid passwords or highly sensitive personal information.</p>
+        </form>
+        <div className="course-note-list"><div className="section-header"><div><span className="eyebrow">SAVED NOTES</span><h3>Your notes</h3></div><span className="note-count">{notes.length}</span></div>
+          {notes.length ? notes.map(note => <article className="course-note-card" key={note.id}>
+            <div className="course-note-meta"><span className="course-code">{note.courseId}</span><time dateTime={new Date(Number(note.updatedAt)).toISOString()}>Updated {new Date(Number(note.updatedAt)).toLocaleString()}</time></div>
+            <h4>{note.title}</h4><p className="course-note-course">{note.courseTitle}</p><p className="course-note-body">{note.body}</p>
+            <div className="course-note-actions"><button className="text-action" type="button" onClick={() => { setEditingNoteId(note.id); setDraft({ courseId: note.courseId, title: note.title, body: note.body }); }}>Edit</button><button className="text-action note-delete" type="button" onClick={() => onDelete(note.id)}>Delete</button></div>
+          </article>) : <div className="note-empty note-list-empty"><span className="note-empty-icon"><Icon name="note" size={22} /></span><b>No course notes yet</b><span>Choose an enrolled course and save your first note.</span></div>}
+        </div>
+      </div>
     </section>
   );
 }
