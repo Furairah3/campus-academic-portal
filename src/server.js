@@ -130,6 +130,22 @@ app.post('/api/logout', authenticated, csrf, (req, res, next) => req.session.des
 
 app.post('/api/enrol/options', csrf, async (req, res, next) => {
   try {
+    if (req.body.createCourse) {
+      if (!req.session.userId) return res.status(401).json({ error: 'Sign in required' });
+      const user = await db.get('SELECT id,role FROM users WHERE id=?', [req.session.userId]);
+      if (!user) return res.status(401).json({ error: 'Sign in required' });
+      if (user.role !== 'lecturer') return res.status(403).json({ error: 'Only lecturer accounts can create courses' });
+      const courseId = String(req.body.courseId || '').trim().toUpperCase();
+      const title = String(req.body.title || '').trim().replace(/\s+/g, ' ');
+      if (!/^[A-Z]{2,5}[0-9]{2,4}$/.test(courseId)) return res.status(400).json({ error: 'Use a course code such as CS310 or IS451' });
+      if (title.length < 3 || title.length > 100) return res.status(400).json({ error: 'Course title must be 3 to 100 characters' });
+      if (await db.get('SELECT 1 FROM courses WHERE id=?', [courseId])) return res.status(409).json({ error: 'That course code is already in use' });
+      await db.transaction(async tx => {
+        await tx.run('INSERT INTO courses(id,title,lecturer_id) VALUES(?,?,?)', [courseId, title, user.id]);
+        await tx.run('INSERT INTO course_lecturers(course_id,lecturer_id) VALUES(?,?)', [courseId, user.id]);
+      });
+      return res.status(201).json({ course: { id: courseId, title } });
+    }
     if (req.body.enrollCourse) {
       const user = await db.get('SELECT id,role FROM users WHERE id=?', [req.session.userId]);
       if (!user) return res.status(401).json({ error: 'Sign in required' });

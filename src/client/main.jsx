@@ -65,6 +65,7 @@ function App() {
   const [code, setCode] = useState('');
   const [lecturerInviteCode, setLecturerInviteCode] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [courseDraft, setCourseDraft] = useState({ id: '', title: '' });
   const [edit, setEdit] = useState({ studentId: 'S1', assessment: 'Security lab', grade: '' });
 
   async function refreshCsrf() {
@@ -197,6 +198,24 @@ function App() {
       setRecords(await api('/api/records/me'));
       setSelectedCourseId('');
       setNotice('You are enrolled in the selected course. Grades will appear when they are recorded.');
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  async function createCourse(event) {
+    event.preventDefault();
+    clearMessages();
+    try {
+      const result = await api('/api/enrol/options', {
+        method: 'POST',
+        body: JSON.stringify({ createCourse: true, courseId: courseDraft.id, title: courseDraft.title }),
+      });
+      const catalog = await api('/api/enrol/options');
+      setCourseCatalog(catalog.courses || []);
+      setRoster({ course: result.course, students: [] });
+      setCourseDraft({ id: '', title: '' });
+      setNotice('Course created and added to your teaching assignments. Students can now enroll from their dashboard.');
     } catch (requestError) {
       setError(requestError.message);
     }
@@ -363,9 +382,9 @@ function App() {
           {page === 'overview' && <Overview onSignIn={() => navigate('signin')} onRegister={() => navigate('enroll')} />}
           {page === 'signin' && <SignInForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} busy={busy} onSubmit={signIn} onRegister={() => navigate('enroll')} />}
           {page === 'enroll' && <EnrollmentForm userId={userId} setUserId={setUserId} demoAccountIds={demoAccountIds} code={code} setCode={setCode} displayName={displayName} setDisplayName={setDisplayName} busy={busy} onCreateDemo={createDemoAccount} lecturerInviteCode={lecturerInviteCode} setLecturerInviteCode={setLecturerInviteCode} onCreateLecturer={createLecturerAccount} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onSubmit={enroll} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseIds={selectedCourseIds} setSelectedCourseIds={setSelectedCourseIds} />}
-          {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onEnrollCourse={enrollInCourse} />}
+          {page === 'dashboard' && <Dashboard user={user} records={records} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onOpenRecords={() => navigate(isStudent ? 'records' : 'roster')} onSignIn={() => navigate('signin')} courses={courseCatalog} selectedCourseId={selectedCourseId} setSelectedCourseId={setSelectedCourseId} onEnrollCourse={enrollInCourse} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
           {page === 'records' && <StudentRecords user={user} records={records} onSignIn={() => navigate('signin')} />}
-          {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onSignIn={() => navigate('signin')} />}
+          {page === 'roster' && <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={saveGrade} onSignIn={() => navigate('signin')} onCreateCourse={createCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />}
           {page === 'note' && <ProtectedNote user={user} payload={notePayload} recovered={noteRecovered} tamperDetected={tamperDetected} onEncrypt={encryptNote} onDecrypt={decryptNote} onTestIntegrity={testNoteIntegrity} onSignIn={() => navigate('signin')} />}
         </main>
 
@@ -455,9 +474,9 @@ function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, disp
   );
 }
 
-function Dashboard({ user, records, roster, edit, setEdit, onSave, onOpenRecords, onSignIn, courses: courseCatalog, selectedCourseId, setSelectedCourseId, onEnrollCourse }) {
+function Dashboard({ user, records, roster, edit, setEdit, onSave, onOpenRecords, onSignIn, courses: courseCatalog, selectedCourseId, setSelectedCourseId, onEnrollCourse, onCreateCourse, courseDraft, setCourseDraft }) {
   if (!user) return <SignedOutState title="Sign in to view your dashboard" onSignIn={onSignIn} />;
-  if (user.role === 'lecturer') return <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={onSave} onSignIn={onSignIn} />;
+  if (user.role === 'lecturer') return <LecturerWorkspace user={user} roster={roster} edit={edit} setEdit={setEdit} onSave={onSave} onSignIn={onSignIn} onCreateCourse={onCreateCourse} courseDraft={courseDraft} setCourseDraft={setCourseDraft} />;
   if (!records) return <LoadingState label="Loading your academic information..." />;
   const enrolledCourses = records.courses || [...new Set(records.grades.map(grade => grade.course))];
   const availableCourses = courseCatalog.filter(course => !enrolledCourses.includes(course.title));
@@ -485,17 +504,17 @@ function StudentRecords({ user, records, onSignIn }) {
   );
 }
 
-function LecturerWorkspace({ user, roster, edit, setEdit, onSave, onSignIn, onOpen, compact = false }) {
+function LecturerWorkspace({ user, roster, edit, setEdit, onSave, onSignIn, onOpen, onCreateCourse, courseDraft, setCourseDraft, compact = false }) {
   if (!user) return <SignedOutState title="Sign in to open your course workspace" onSignIn={onSignIn} />;
   if (user.role !== 'lecturer') return <EmptyState title="Course workspace unavailable" description="This account does not have lecturer access." />;
   if (!roster) return <LoadingState label="Loading your assigned course..." />;
   const title = roster.course?.title;
-  if (!title) return <EmptyState title="No assigned course is available" description="Your course workspace will appear when an assignment is added to your lecturer account." />;
   return (
     <section className="lecturer-page">
-      <div className="course-heading"><div><span className="eyebrow">ASSIGNED COURSE</span><h2>{title}</h2><p>Review enrolled students and update assessment grades.</p></div><span className="course-code">{roster.course.id}</span></div>
-      {compact && <div className="section-header"><div><span className="eyebrow">CLASS ROSTER</span><h3>Enrolled students</h3></div>{onOpen && <button className="text-action" onClick={onOpen}>Course workspace <Icon name="arrow" size={15} /></button>}</div>}
-      <div className={`lecturer-layout ${compact ? 'lecturer-compact' : ''}`}>
+      {title && <div className="course-heading"><div><span className="eyebrow">ASSIGNED COURSE</span><h2>{title}</h2><p>Review enrolled students and update assessment grades.</p></div><span className="course-code">{roster.course.id}</span></div>}
+      <form className="course-create-form" onSubmit={onCreateCourse}><div><span className="eyebrow">COURSE MANAGEMENT</span><h3>Create a course</h3><p>New courses appear in the student course catalog.</p></div><label htmlFor="new-course-id">Course code</label><input id="new-course-id" value={courseDraft.id} onChange={event => setCourseDraft({ ...courseDraft, id: event.target.value.toUpperCase() })} placeholder="CS310" maxLength={9} pattern="[A-Za-z]{2,5}[0-9]{2,4}" required /><label htmlFor="new-course-title">Course title</label><input id="new-course-title" value={courseDraft.title} onChange={event => setCourseDraft({ ...courseDraft, title: event.target.value })} placeholder="Database Systems" maxLength={100} required /><button className="button button-primary" type="submit">Create course</button></form>
+      {!title ? <EmptyState title="No assigned course is available yet" description="You can create a course above; it will become your first teaching assignment." /> : <div className={`lecturer-layout ${compact ? 'lecturer-compact' : ''}`}>
+        {compact && <div className="section-header"><div><span className="eyebrow">CLASS ROSTER</span><h3>Enrolled students</h3></div>{onOpen && <button className="text-action" onClick={onOpen}>Course workspace <Icon name="arrow" size={15} /></button>}</div>}
         <div className="table-card roster-card"><div className="table-card-heading"><div><span className="eyebrow">CLASS ROSTER</span><h3>Enrolled students</h3></div></div>
           {roster.students.length ? <div className="table-scroll"><table><thead><tr><th>Student</th><th>Assessment</th><th>Grade</th></tr></thead><tbody>{roster.students.map((student, index) => <tr key={`${student.id}-${student.assessment}-${index}`}><td><span className="student-cell"><span className="avatar avatar-tiny">{initials(student.name)}</span><span><b>{student.name}</b><small>{student.id}</small></span></span></td><td>{student.assessment || 'No grade recorded'}</td><td>{student.grade === null ? <span className="grade-empty">Not recorded</span> : <><span className="grade-value">{student.grade}</span><span className="grade-out-of"> / 100</span></>}</td></tr>)}</tbody></table></div> : <EmptyState title="No students are enrolled" description="Enrolled students will appear here." />}
           <div className="table-footnote">This roster is limited to your assigned course.</div>
@@ -508,7 +527,7 @@ function LecturerWorkspace({ user, roster, edit, setEdit, onSave, onSignIn, onOp
           <button className="button button-primary button-block">Save grade <Icon name="arrow" size={16} /></button>
           <p className="form-help">Only this assigned course can be updated.</p>
         </form>}
-      </div>
+      </div>}
     </section>
   );
 }

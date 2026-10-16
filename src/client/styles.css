@@ -161,7 +161,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .course-enroll-panel p { margin: 0; color: var(--muted); font-size: 13px; }
 .course-enroll-controls { display: flex; align-items: center; gap: 9px; }
 .course-enroll-controls select { min-height: 42px; max-width: 310px; padding: 0 10px; border: 1px solid #ccd7e4; border-radius: 8px; color: #25344c; background: #fff; }
+.course-create-form { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 10px 12px; margin: 0 0 22px; padding: 18px; border: 1px solid var(--border); border-radius: 13px; background: #fff; }
+.course-create-form > div { grid-column: 1 / -1; }
+.course-create-form h3 { margin: 5px 0; color: #24324a; font-size: 17px; }
+.course-create-form p { margin: 0; color: var(--muted); font-size: 13px; }
+.course-create-form label { color: #53647b; font-size: 12px; font-weight: 700; }
+.course-create-form input { width: 100%; min-height: 42px; padding: 0 10px; border: 1px solid #ccd7e4; border-radius: 8px; color: #25344c; background: #fff; }
+.course-create-form button { min-height: 42px; }
 @media (max-width: 700px) { .course-enroll-panel { align-items: flex-start; flex-direction: column; }.course-enroll-controls { width: 100%; }.course-enroll-controls select { flex: 1; min-width: 0; } }
+@media (max-width: 700px) { .course-create-form { grid-template-columns: 1fr; }.course-create-form > div { grid-column: auto; } }
 .records-callout { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 25px; padding: 21px 23px; border: 1px solid #d9eaf6; border-radius: 13px; background: #f4faff; }
 .records-callout h3 { margin: 5px 0; color: #24324a; font-size: 17px; }.records-callout p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 
