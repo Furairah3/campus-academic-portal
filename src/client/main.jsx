@@ -158,7 +158,7 @@ function App() {
       const credential = await startRegistration({ optionsJSON: options });
       await api('/api/enrol/verify', { method: 'POST', body: JSON.stringify(credential) });
       setCode('');
-      setNotice(`Passkey registered for ${userId}. Enter that account ID on the sign-in page.`);
+      setNotice(`Passkey registered for ${userId}. Choose that account from the sign-in list.`);
       setPage('signin');
     } catch (requestError) {
       setError(requestError.message);
@@ -519,8 +519,11 @@ function SignInForm({ userId, setUserId, demoAccountIds, busy, onSubmit, onRegis
       <form className="form-card" onSubmit={onSubmit}>
         <div className="form-card-heading"><span className="eyebrow">ACCOUNT ACCESS</span><h3>Welcome back</h3><p>Choose your account to continue with your passkey.</p></div>
         <label htmlFor="signin-account">Academic account</label>
-        <input id="signin-account" type="text" list="known-signin-accounts" value={userId} onChange={event => setUserId(event.target.value.toUpperCase())} autoComplete="off" required placeholder="Enter your account ID" />
-        <datalist id="known-signin-accounts">{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo {id.startsWith('L-') ? 'lecturer' : 'student'} account</option>)}</datalist>
+        <select id="signin-account" value={userId} onChange={event => setUserId(event.target.value)} required>
+          <option value="">Choose an account you created</option>
+          {demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo {id.startsWith('L-') ? 'lecturer' : 'student'} account</option>)}
+        </select>
+        {!demoAccountIds.length && <p className="form-help">Create your own account first. It will appear in this list after creation.</p>}
         <button className="button button-primary button-block" disabled={busy}>{busy ? 'Waiting for your device...' : 'Continue with passkey'} <Icon name="arrow" size={17} /></button>
         <p className="form-help">Your passkey stays with your device. No password is needed.</p>
         <div className="form-divider"><span>New to passkey access?</span></div>
@@ -550,8 +553,11 @@ function EnrollmentForm({ userId, setUserId, demoAccountIds, code, setCode, disp
         <button className="button button-secondary button-block" type="button" onClick={onCreateLecturer} disabled={busy || displayName.trim().length < 2 || lecturerInviteCode.trim().length < 20 || !selectedCourseId}>{busy ? 'Preparing account...' : 'Create lecturer account'}</button>
         <div className="form-divider"><span>Or use an issued code</span></div>
         <label htmlFor="enroll-account">Academic account</label>
-        <input id="enroll-account" type="text" list="known-enrollment-accounts" value={userId} onChange={event => setUserId(event.target.value.toUpperCase())} autoComplete="off" required placeholder="Enter your issued account ID" />
-        <datalist id="known-enrollment-accounts">{demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo {id.startsWith('L-') ? 'lecturer' : 'student'} account</option>)}</datalist>
+        <select id="enroll-account" value={userId} onChange={event => setUserId(event.target.value)} required>
+          <option value="">Choose an account you created</option>
+          {demoAccountIds.map(id => <option value={id} key={id}>{id} - Your demo {id.startsWith('L-') ? 'lecturer' : 'student'} account</option>)}
+        </select>
+        {!demoAccountIds.length && <p className="form-help">Create a student or lecturer account above to add it to this list.</p>}
         <label htmlFor="enroll-code">One-time registration code</label>
         <input id="enroll-code" type="password" value={code} onChange={event => setCode(event.target.value)} autoComplete="off" required minLength={12} placeholder="Enter your issued code" />
         <button className="button button-primary button-block" disabled={busy}>{busy ? 'Waiting for your device...' : 'Register passkey'} <Icon name="arrow" size={17} /></button>

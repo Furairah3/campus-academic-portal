@@ -62,9 +62,9 @@ Startup seeds the demo lecturer and these courses: IS451 Information and Systems
 2. Enter your display name and select one or more courses.
 3. Choose **Create my student account**. The portal displays a new account ID and fills the one-time registration code into the registration form.
 4. Choose **Register passkey** and approve the browser/device prompt. Use the same browser profile and device that can access the passkey later.
-5. On the sign-in page, enter the account ID and use the passkey saved to your device. Recently created demo IDs may appear as suggestions.
+5. On the sign-in page, choose the account you created and use the passkey saved to your device.
 
-The sign-in field may suggest recently created IDs in that browser's local storage. If you switch browsers or clear its data, type your account ID or recover it through the course administrator. Account IDs are not passwords; the matching registered passkey is still required.
+The sign-in list remembers recently created IDs in that browser's local storage. If you switch browsers or clear its data, create a new demo account or recover the account details through the course administrator. Account IDs are not passwords; the matching registered passkey is still required.
 
 ### Enroll in another course
 
